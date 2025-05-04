@@ -14,6 +14,24 @@ namespace STBEverywhere_back_APIChequier.Repository
             _context = context;
         }
 
+
+
+        public async Task<Chequier?> GetByDemandeIdAsync(int demandeId)
+        {
+            return await _context.Chequiers.FirstOrDefaultAsync(c => c.DemandeChequierId == demandeId);
+        }
+
+        public async Task AddAsync(Chequier chequier)
+        {
+            await _context.Chequiers.AddAsync(chequier);
+        }
+
+        public async Task SaveAsync()
+        {
+            await _context.SaveChangesAsync();
+        }
+
+
         public async Task<Chequier> GetByIdAsync(int chequierId)
         {
             return await _context.Chequiers.FirstOrDefaultAsync(c => c.Id == chequierId);
@@ -41,6 +59,13 @@ namespace STBEverywhere_back_APIChequier.Repository
         public async Task SaveChangesAsync()
         {
             await _context.SaveChangesAsync();
+        }
+
+        public async Task<List<DemandeChequier>> GetChequiersExpedieAsync()
+        {
+            return await _context.DemandesChequiers
+                 .Where(c => c.Status == DemandeStatus.Expedie)
+                 .ToListAsync();
         }
     }
 }

@@ -30,13 +30,11 @@ namespace STBEverywhere_Back_SharedModels
         public decimal? DecouvertAutorise { get; set; }
 
         public string? idAgent { get; set; }
-        public string? NbrOperationsAutoriseesParJour { get; set; }
+        public string NbrOperationsAutoriseesParJour = "illimité";
 
-        [Column(TypeName = "decimal(18,3)")]
-        public decimal MontantMaxAutoriseParJour { get; set; }
 
-        // Clé étrangère vers Client
-        [Required]
+        public string MontantMaxAutoriseParJour = "illimité";  
+
         public int ClientId { get; set; } // Clé étrangère
         [JsonIgnore]
         [ForeignKey("ClientId")]
@@ -48,6 +46,7 @@ namespace STBEverywhere_Back_SharedModels
         public ICollection<DemandeCarte> DemandesCarte { get; set; } = new List<DemandeCarte>();
         public ICollection<PeriodeDecouvert> PeriodesDecouvert { get; set; }
         public ICollection<FraisCompte> FraisComptes { get; set; } = new List<FraisCompte>();
+        public ICollection<HistoriqueSolde> HistoriqueSoldes { get; set; } = new List<HistoriqueSolde>();
 
     }
 }

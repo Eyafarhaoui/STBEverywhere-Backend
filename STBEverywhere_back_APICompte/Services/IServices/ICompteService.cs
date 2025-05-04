@@ -3,7 +3,7 @@ using STBEverywhere_Back_SharedModels;
 using STBEverywhere_Back_SharedModels.Models;
 using System.Linq.Expressions;
 
-namespace STBEverywhere_back_APICompte.Services
+namespace STBEverywhere_back_APICompte.Services.IServices
 {
     public interface ICompteService
     {
@@ -22,6 +22,7 @@ namespace STBEverywhere_back_APICompte.Services
         Task<IEnumerable<DemandeModificationDecouvert>> GetDemandesByClientIdAsync(int clientId);
         Task CreateDemandeModificationAsync(DemandeModificationDecouvert demande);
 
+
         //Task<IEnumerable<DemandeModificationDecouvert>> GetDemandesModificationAsync(string ribCompte, string statut);
 
 
@@ -31,6 +32,7 @@ namespace STBEverywhere_back_APICompte.Services
         //Task<Compte> GetByRibAsync(string rib);
         Task<Compte> GetByRIBAsync(string rib);
         Task<string> GetAgenceIdOfCompteAsync(string rib);
-
+        Task<byte[]> GeneratePdfRIBWithQuestPDF(Client client, string rib, IWebHostEnvironment env, string iban, DateTime dateCreation);
+        Task<byte[]> GeneratePdfExtraitWithQuestPDF(string rib, DateTime dateDebut, DateTime dateFin, string Statut, string IBAN, decimal solde, IWebHostEnvironment hostingEnvironment);
     }
 }

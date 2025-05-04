@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Mvc;
 using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_back_APICompte.Repository.IRepository;
-using STBEverywhere_back_APICompte.Services;
 using STBEverywhere_Back_SharedModels.Models.DTO;
 using STBEverywhere_Back_SharedModels.Models;
 using System.IdentityModel.Tokens.Jwt;
@@ -11,6 +10,7 @@ using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_Back_SharedModels;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using STBEverywhere_back_APICompte.Services.IServices;
 
 namespace STBEverywhere_back_APICompte.Controllers
 {

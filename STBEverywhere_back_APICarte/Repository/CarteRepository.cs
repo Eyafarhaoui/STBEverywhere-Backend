@@ -144,5 +144,22 @@ namespace STBEverywhere_back_APICarte.Repository
         {
             return await _context.Cartes.FirstOrDefaultAsync(c => c.NumCarte == numCarte);
         }
+
+
+
+
+
+        public async Task<IEnumerable<FraisCarte>> GetFraisByNumCarteAsync(string numCarte)
+        {
+            return await _context.FraisCartes
+                                 .Where(f => f.NumCarte == numCarte)
+                                 .ToListAsync();
+        }
+
+
+
+
+
+
     }
 }

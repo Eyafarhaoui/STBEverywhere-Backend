@@ -43,9 +43,7 @@ namespace STBEverywhere_Back_SharedModels.Models
     }
     public enum ReclamationStatut
     {
-        
         EnCours,
-        traite
-        
+        traite 
     }
 }
