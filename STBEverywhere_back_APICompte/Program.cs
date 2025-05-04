@@ -21,23 +21,46 @@ using QuestPDF.Infrastructure;
 
 using System.Runtime.InteropServices;
 using System.Net.Http.Headers;
-
+using STBEverywhere_back_APICompte.Services.IServices;
+using Hangfire;
+using Hangfire.MySql;
 
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
   options.UseMySql(
       builder.Configuration.GetConnectionString("DefaultConnection"),
-      ServerVersion.Parse("8.0.0-mysql") // Mets la version exacte de MySQL ici
+      ServerVersion.Parse("8.0.0-mysql")
   ));
+
+// Add services to the container.
+
+builder.Services.AddHangfire(configuration =>
+{
+    configuration.UseStorage(new MySqlStorage(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        new MySqlStorageOptions
+        {
+            TablesPrefix = "Hangfire",
+            QueuePollInterval = TimeSpan.FromSeconds(10)
+        }
+    ));
+});
+
+
+
+// Démarre le serveur Hangfire
+builder.Services.AddHangfireServer();
+
+
+builder.Services.AddScoped<IHistoriqueSoldeService, HistoriqueSoldeService>(); 
 builder.Services.AddScoped<ICompteRepository, CompteRepository>();
 builder.Services.AddScoped<IVirementRepository, VirementRepository>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICompteService, CompteService>();
+builder.Services.AddScoped<IVirementRepository, VirementRepository>();
+
 builder.Services.AddScoped<IBeneficiaireRepository, BeneficiaireRepository>();
 builder.Services.AddScoped<IFraisCompteRepository, FraisCompteRepository>();
 //builder.Services.AddScoped<IVirementService, VirementService>();
@@ -197,10 +220,23 @@ if (app.Environment.IsDevelopment())
 //app.UseStaticFiles();
 app.UseHttpsRedirection();
 
+app.UseRouting(); // 
+
 app.UseAuthentication();
 app.UseCors("AllowAngularOrigins");
 app.UseAuthorization();
 
-app.MapControllers();
+app.UseHangfireDashboard("/hangfire");
+
+RecurringJob.AddOrUpdate<IHistoriqueSoldeService>(
+    x => x.AlimenterHistoriqueSolde(),
+    Cron.Daily,
+    TimeZoneInfo.FindSystemTimeZoneById("Africa/Tunis")
+);
+
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+});
 
 app.Run();

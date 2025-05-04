@@ -8,7 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using STBEverywhere_back_APICompte.Controllers;
 using Microsoft.EntityFrameworkCore;
-using STBEverywhere_back_APICompte.Services;
+using STBEverywhere_back_APICompte.Services.IServices;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {

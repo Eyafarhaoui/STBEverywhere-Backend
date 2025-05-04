@@ -12,13 +12,13 @@ namespace STBEverywhere_Back_SharedModels.Models
         public int Id { get; set; }
 
         [Required]
-        public string type { get; set; } // "VirementMultiple", "VirementUnitaire", etc.
+        public string type { get; set; } // "VirementMultiple", "VirementUnitaire".
 
         [Required]
         public DateTime Date { get; set; }
 
         [Required]
-        [Column(TypeName = "decimal(18,3)")]
+        [Column(TypeName = "decimal(10,3)")]
         public decimal Montant { get; set; }
 
         // Stockage des IDs sous forme "1,2,3"

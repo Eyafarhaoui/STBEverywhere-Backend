@@ -22,7 +22,7 @@ namespace STBEverywhere_Back_SharedModels.Models
         public DateTime? DateLivraison { get; set; }
 
         public int? IdAgent { get; set; }
-
+        public ICollection<FraisChequier> FraisComptes { get; set; } = new List<FraisChequier>();
 
         //public List<FeuilleChequier> Feuilles { get; set; } = new List<FeuilleChequier>();
 

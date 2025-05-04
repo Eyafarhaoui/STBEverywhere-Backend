@@ -20,8 +20,10 @@ using MailKit.Security;
 using MimeKit;
 using iTextSharp.text.pdf;
 using iTextSharp.text;
+
 using iTextSharp.text.pdf.draw;
 
+using Microsoft.AspNetCore.Hosting;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -58,6 +60,59 @@ namespace STBEverywhere_back_APIClient.Controllers
             _environment = environment;
             _notificationService = notificationService;
         }
+
+
+
+
+
+        [HttpGet("convention/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetConventionById(int id)
+        {
+            try
+            {
+                if (id <= 0)
+                {
+                    _logger.LogWarning("ID de convention invalide: {Id}", id);
+                    return BadRequest(new
+                    {
+                        Status = 400,
+                        Message = "ID invalide",
+                        Details = "L'ID doit être un nombre positif"
+                    });
+                }
+
+                var convention = await _clientService.GetConventionByIdAsync(id);
+
+                if (convention == null)
+                {
+                    _logger.LogWarning("Convention non trouvée - ID: {Id}", id);
+                    return NotFound(new
+                    {
+                        Status = 404,
+                        Message = "Convention introuvable",
+                        Details = $"Aucune convention avec l'ID {id}"
+                    });
+                }
+
+                _logger.LogInformation("Convention récupérée avec succès - ID: {Id}", id);
+                return Ok(convention);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération de la convention ID: {Id}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError, new
+                {
+                    Status = 500,
+                    Message = "Erreur interne du serveur",
+                    
+                });
+            }
+        }
+
 
 
 

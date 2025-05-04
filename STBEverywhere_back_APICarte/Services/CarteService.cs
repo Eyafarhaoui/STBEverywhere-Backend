@@ -16,7 +16,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Security.Claims;
 using STBEverywhere_Back_SharedModels.Models.enums;
-using STBEverywhere_back_APICompte.Services;
+using STBEverywhere_back_APICompte.Services.IServices;
 
 namespace STBEverywhere_back_APICarte.Services
 {

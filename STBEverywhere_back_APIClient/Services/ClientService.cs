@@ -33,7 +33,12 @@ namespace STBEverywhere_back_APIClient.Services
         }
 
 
-
+        public async Task<Convention?> GetConventionByIdAsync(int id)
+        {
+            return await _context.Conventions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.id_convention == id);
+        }
         public async Task<Client> GetClientByIdAsync(int clientId)
         {
             return await _clientRepository.GetClientByIdAsync(clientId);

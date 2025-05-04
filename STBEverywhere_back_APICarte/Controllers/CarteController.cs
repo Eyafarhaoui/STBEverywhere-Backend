@@ -1070,6 +1070,58 @@ namespace STBEverywhere_back_APICarte.Controllers
                 _ => new List<StatutDemande>(),
             };
         }
+
+
+
+
+
+
+
+
+        [HttpGet("frais-cartes/by-rib/{rib}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetFraisCartesByRib(string rib)
+        {
+            try
+            {
+                // Étape 1 : récupérer toutes les cartes associées à ce RIB
+                var cartes = await _carteRepository.GetCartesByRIBAsync(rib);
+
+                if (cartes == null || !cartes.Any())
+                    return NotFound($"Aucune carte trouvée pour le RIB : {rib}");
+
+                // Étape 2 : récupérer les frais liés à chaque carte
+                var fraisCartes = new List<FraisCarte>();
+
+                foreach (var carte in cartes)
+                {
+                    var frais = await _carteRepository.GetFraisByNumCarteAsync(carte.NumCarte);
+                    if (frais != null && frais.Any())
+                        fraisCartes.AddRange(frais);
+                }
+
+                if (!fraisCartes.Any())
+                    return NotFound($"Aucun frais de carte trouvé pour le RIB : {rib}");
+
+                return Ok(fraisCartes);
+            }
+            catch (Exception ex)
+            {
+                // Ici tu peux ajouter _logger.LogError(ex, "Erreur lors de la récupération des frais")
+                return StatusCode(StatusCodes.Status500InternalServerError, "Une erreur interne est survenue.");
+            }
+        }
+
+
+
+
+
+
+
+
+
     }
 
 }

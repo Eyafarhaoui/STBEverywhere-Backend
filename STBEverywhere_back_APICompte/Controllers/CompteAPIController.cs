@@ -5,12 +5,10 @@ using STBEverywhere_Back_SharedModels;
 
 
 using System.IdentityModel.Tokens.Jwt; // Pour JwtRegisteredClaimNames
-
 using STBEverywhere_Back_SharedModels.Models.DTO;
 using STBEverywhere_back_APICompte.Repository.IRepository;
 
 using System.Security.Claims;
-using STBEverywhere_back_APICompte.Services;
 
 using STBEverywhere_ApiAuth.Repositories;
 
@@ -31,6 +29,14 @@ using System.Text.Json;
 using MongoDB.Bson.IO;
 using Newtonsoft.Json;
 using JsonConvert = Newtonsoft.Json.JsonConvert;
+using STBEverywhere_Back_SharedModels.Models.enums;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using STBEverywhere_back_APICompte.Repository;
+using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using Microsoft.Extensions.Hosting;
+using System.Numerics;
+using STBEverywhere_back_APICompte.Services.IServices;
 
 
 
@@ -76,6 +82,12 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
+       
+
+
+
+
+
 
 
         [HttpGet("agence-id")]
@@ -84,27 +96,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             var agenceId = await _compteService.GetAgenceIdOfCompteAsync(rib);
             return Ok(agenceId);
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        /*
+    /*
 
         [HttpGet("getComptesByAgence/{agenceId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -313,7 +305,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             return Ok(compte);
         }
 
-        [HttpPut("desactive/{rib}")]
+        /*[HttpPut("desactive/{rib}")]
 
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -360,38 +352,104 @@ namespace STBEverywhere_back_APICompte.Controllers
             await _compteService.SaveAsync();
 
             return Ok(new { message = "Le compte a été activé avec succès." });
-        }
-
-
+        }*/
         [HttpPut("Cloturer/{rib}")]
-
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CloturerCompte(string rib)
         {
+            Console.WriteLine("=== Début de la méthode CloturerCompte ===");
+            Console.WriteLine($"RIB reçu : {rib}");
 
             var userId = GetUserIdFromToken();
+            Console.WriteLine($"User ID récupéré depuis le token : {userId}");
+
             var client = await _userRepository.GetClientByUserIdAsync(userId);
             var clientId = client.Id;
+            Console.WriteLine($"Client ID récupéré : {clientId}");
 
-
-            var compte = (await _compteService.GetAllAsync(c => c.RIB == rib)).FirstOrDefault(); 
-
+            var compte = (await _compteService.GetAllAsync(c => c.RIB == rib)).FirstOrDefault();
             if (compte == null)
             {
-                return NotFound(new { message = "Compte introuvable." });
+                Console.WriteLine("Aucun compte trouvé pour ce RIB.");
+                return NotFound(new { message = "Aucun compte bancaire correspondant au RIB fourni n’a été trouvé." });
             }
+
+            Console.WriteLine($"Compte trouvé - Solde : {compte.Solde}");
+
+            // Initialisation des indicateurs
+            bool hasCarteActive = false;
+            bool hasChequierActif = false;
+
+            // Vérification des cartes actives
+            Console.WriteLine("Vérification des cartes associées...");
+            var responseCartes = await _httpClient.GetAsync($"http://localhost:5132/api/Carte/rib/{rib}");
+            if (responseCartes.IsSuccessStatusCode)
+            {
+                var json = await responseCartes.Content.ReadAsStringAsync();
+                var cartes = JsonConvert.DeserializeObject<List<CarteDTO>>(json);
+                hasCarteActive = cartes.Any(c => c.Statut == StatutCarte.Active);
+            }
+            else
+            {
+                Console.WriteLine($"Erreur lors de la récupération des cartes (status code: {responseCartes.StatusCode})");
+            }
+
+            // Vérification des chéquiers actifs
+            Console.WriteLine("Vérification des chèquiers associés...");
+            var responseChequiers = await _httpClient.GetAsync($"http://localhost:5264/api/ChequierApi/cheques/{rib}");
+            if (responseChequiers.IsSuccessStatusCode)
+            {
+                var json = await responseChequiers.Content.ReadAsStringAsync();
+                var chequiers = JsonConvert.DeserializeObject<List<chequierDTO>>(json);
+                hasChequierActif = chequiers.Any(c => c.Status == ChequierStatus.Actif);
+            }
+            else
+            {
+                Console.WriteLine($"Erreur lors de la récupération des chèquiers (status code: {responseChequiers.StatusCode})");
+            }
+
+            // Analyse des causes de refus
+            List<string> motifsRefus = new();
 
             if (compte.Solde != 0)
             {
-                return BadRequest(new { message = "Vous devez mettre votre compte à zéro puis réessayer de le clôturer." });
+                motifsRefus.Add("le solde du compte n’est pas nul");
             }
 
+            if (hasCarteActive)
+            {
+                motifsRefus.Add("une ou plusieurs cartes bancaires actives sont associées à ce compte");
+            }
+
+            if (hasChequierActif)
+            {
+                motifsRefus.Add("un ou plusieurs chèquiers actifs sont liés à ce compte");
+            }
+
+            if (motifsRefus.Count > 0)
+            {
+                var messageFinal = "La demande de clôture du compte n’a pas pu aboutir pour les raisons suivantes : " +
+                                   string.Join(", ", motifsRefus) + ". " +
+                                   "Merci de régulariser la situation avant de renouveler votre demande.";
+
+                Console.WriteLine("Clôture refusée : " + messageFinal);
+                return BadRequest(new { message = messageFinal });
+            }
+
+            // Clôture du compte
             compte.Statut = "Clôturé";
             await _compteService.SaveAsync();
-            return Ok(new { message = "Le compte a été clôturé avec succès." });
+
+            Console.WriteLine("Compte clôturé avec succès.");
+            Console.WriteLine("=== Fin de la méthode CloturerCompte ===");
+
+            return Ok(new { message = "Votre compte a été clôturé avec succès. Merci pour votre confiance." });
         }
+
+
+
 
         private int GetUserIdFromToken()
         {
@@ -514,7 +572,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
-        private async Task<byte[]> GeneratePdfWithQuestPDF(Client client, string rib, IWebHostEnvironment hostingEnvironment, string iban, DateTime dateActivation)
+        private async Task<byte[]> GeneratePdfWithQuestPDF(Client client, string rib, IWebHostEnvironment hostingEnvironment, string iban, DateTime dateCreation)
         {
             try
             {
@@ -597,7 +655,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                                 col.Item().Text("Titulaire du compte :");
                                 col.Item().Text($"{client.Nom} {client.Prenom}");
                                 col.Item().Text(client.Adresse);
-                                col.Item().AlignRight().Text($"Date d'activation : {dateActivation:dd/MM/yyyy}");
+                                col.Item().AlignRight().Text($"Date de création : {dateCreation:dd/MM/yyyy}");
 
                                 col.Item().Height(20);
 
@@ -716,7 +774,6 @@ namespace STBEverywhere_back_APICompte.Controllers
                 if (comptes == null || !comptes.Any())
                     return NotFound(new { message = "Aucun compte actif trouvé pour ce client" });
 
-                // Prendre le premier compte (ou implémenter une logique pour choisir le compte)
                 var compte = comptes.FirstOrDefault();
                 if (string.IsNullOrEmpty(compte?.RIB))
                     return NotFound(new { message = "RIB non disponible pour ce compte" });
@@ -724,14 +781,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 QuestPDF.Settings.License = LicenseType.Community;
 
 
-                
-
-
-                // Génération du PDF avec le RIB spécifique
-                //var pdfBytes = GeneratePdfWithQuestPDF(client, rib, _webHostEnvironment,compte.IBAN,compte.DateCreation);
-                //return File(pdfBytes, "application/pdf", $"RIB_{client.Nom}.pdf");
-
-                var pdfBytes = await GeneratePdfWithQuestPDF(client, rib, _webHostEnvironment, compte.IBAN, compte.DateCreation);
+                var pdfBytes = await _compteService.GeneratePdfRIBWithQuestPDF(client, rib, _webHostEnvironment, compte.IBAN, compte.DateCreation);
                 return File(pdfBytes, "application/pdf", $"RIB_{client.Nom}.pdf");
 
             }
@@ -743,108 +793,109 @@ namespace STBEverywhere_back_APICompte.Controllers
             }
         }
 
+
+
+
+
+
+
+        [HttpPut("Debiter/{rib}/{montant}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DebiterCompte(string rib, decimal montant)
+        {
+            var compte = (await _compteService.GetAllAsync(c => c.RIB == rib)).FirstOrDefault();
+
+            if (compte == null)
+                return NotFound("Compte introuvable.");
+
+            if (compte.SoldeDisponible < montant)
+                return BadRequest("Solde insuffisant.");
+
+            compte.Solde -= montant;
+            await _compteService.UpdateAsync(compte);
+
+            return Ok(new { message = "Compte débité avec succès." });
+        }
+
+
+        [HttpGet("extrait/download")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DownloadExtrait(string rib, [FromQuery] DateTime datedebut, [FromQuery] DateTime dateFin)
+        {
+            try
+            {
+                var userId = GetUserIdFromToken();
+                var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+                if (client == null) return NotFound(new { message = "Client non trouvé" });
+
+                var comptes = await _compteService.GetAllAsync(c => c.Type != "Technique"&& c.RIB==rib);
+
+                if (comptes == null || !comptes.Any())
+                    return NotFound(new { message = "Aucun compte trouvé pour ce rib" });
+
+                var compte = comptes.FirstOrDefault();
+                /*if (string.IsNullOrEmpty(compte?.RIB))
+                    return NotFound(new { message = "RIB non disponible pour ce compte" }); QuestPDF.Settings.License = LicenseType.Community;*/
+
+                var debut = datedebut.Date; // 00:00:00 par défaut
+                var fin = dateFin.Date.AddDays(1).AddTicks(-1); // 23:59:59.9999999
+                var pdfBytes = await _compteService.GeneratePdfExtraitWithQuestPDF(rib, debut, fin, compte.Statut,compte.IBAN,compte.Solde, _webHostEnvironment);
+                return File(pdfBytes, "application/pdf", $"RIB_{client.Nom}.pdf");
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la génération du RIB");
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { message = "Une erreur est survenue lors de la génération du document" });
+            }
+        }
+
+        
        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     }
 }
 
-        /* [HttpGet("rib/download")]
-         [ProducesResponseType(StatusCodes.Status200OK)]
-         [ProducesResponseType(StatusCodes.Status404NotFound)]
-         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-         public async Task<IActionResult> DownloadRIB()
-         {
-             try
-             {
-                 var userId = GetUserIdFromToken();
-                 var client = await _userRepository.GetClientByUserIdAsync(userId);
-
-                 if (client == null)
-                     return NotFound(new { message = "Client non trouvé" });
-
-                 var comptes = await _compteService.GetAllAsync(c => c.ClientId == client.Id && c.Statut != "Clôturé" &&
-     c.Type != "Technique");
-
-                 if (comptes == null || !comptes.Any())
-                     return NotFound(new { message = "Aucun compte actif trouvé pour ce client" });
-
-                 // Configuration de la licence QuestPDF (gratuite pour les projets open source)
-                 QuestPDF.Settings.License = LicenseType.Community;
-
-                 var pdfBytes = GeneratePdfWithQuestPDF(client, comptes);
-                 return File(pdfBytes, "application/pdf", $"Releve_RIB_{client.Nom}_{client.Prenom}.pdf");
-             }
-             catch (Exception ex)
-             {
-                 _logger.LogError(ex, "Erreur lors de la génération du RIB");
-                 return StatusCode(StatusCodes.Status500InternalServerError,
-                     new { message = "Une erreur est survenue lors de la génération du document" });
-             }
-         }*/
-
-        /*private byte[] GeneratePdfWithQuestPDF(Client client, IEnumerable<Compte> comptes)
-        {
-            return Document.Create(container =>
-            {
-                container.Page(page =>
-                {
-                    page.Size(PageSizes.A4);
-                    page.Margin(2, QuestPDF.Infrastructure.Unit.Centimetre);
-                    page.PageColor(Colors.White);
-                    page.DefaultTextStyle(x => x.FontSize(12));
-
-                    // En-tête
-                    page.Header()
-                        .AlignCenter()
-                        .Text("STB EVERYWHERE")
-                        .SemiBold().FontSize(18).FontColor(Colors.Blue.Darken3);
-
-                    // Contenu principal
-                    page.Content()
-                        .PaddingVertical(1, QuestPDF.Infrastructure.Unit.Centimetre)
-                        .Column(col =>
-                        {
-                            // Titre principal
-                            col.Item().Text($"Relevé d'Identité Bancaire - {client.Nom} {client.Prenom}")
-                                .SemiBold().FontSize(16);
-
-                            // Section Informations Client
-                            col.Item().PaddingTop(10).Column(clientCol =>
-                            {
-                                clientCol.Item().Text("Informations client:").Bold();
-                                clientCol.Item().Text($"Nom: {client.Nom} {client.Prenom}");
-                                clientCol.Item().Text($"CIN: {client.NumCIN ?? "Non renseigné"}");
-                                clientCol.Item().Text($"Date de naissance: {client.DateNaissance:dd/MM/yyyy}");
-                                clientCol.Item().Text($"Adresse: {client.Adresse}");
-                            });
-
-                            // Section Comptes Bancaires
-                            col.Item().PaddingTop(15).Text("Coordonnées bancaires:").Bold();
-
-                            foreach (var compte in comptes)
-                            {
-                                col.Item().PaddingTop(5).Border(1).Padding(10).Column(accountCol =>
-                                {
-                                    accountCol.Item().Text($"Type: {compte.Type}").SemiBold();
-                                    accountCol.Item().Text($"RIB: {compte.RIB}");
-                                    accountCol.Item().Text($"IBAN: {compte.IBAN}");
-                                    accountCol.Item().Text($"Solde: {compte.Solde:C}");
-                                    accountCol.Item().Text($"Date création: {compte.DateCreation:dd/MM/yyyy}");
-                                });
-                            }
-                        });
-
-                    // Pied de page
-                    page.Footer()
-                        .AlignCenter()
-                        .Text(text =>
-                        {
-                            text.Span("Document généré le ");
-                            text.Span($"{DateTime.Now:dd/MM/yyyy à HH:mm}");
-                            text.Span(" - STB EVERYWHERE");
-                        });
-                });
-            }).GeneratePdf();
-        }*/
+       
 
 

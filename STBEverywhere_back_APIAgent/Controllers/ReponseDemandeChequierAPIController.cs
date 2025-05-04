@@ -34,7 +34,68 @@ namespace STBEverywhere_back_APIAgent.Controllers
 
         }
 
-      
+
+        [HttpGet("statistiques-agent")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetStatistiquesAgent()
+        {
+            try
+            {
+                var userId = GetUserIdFromToken();
+                var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+
+                if (agent == null || string.IsNullOrEmpty(agent.AgenceId))
+                {
+                    return BadRequest("Agent non trouvé ou agence non définie.");
+                }
+
+            // Appel API pour récupérer les demandes de l'agence
+           
+
+                var apiUrl = $"http://localhost:5264/api/DemandeChequierApi/getDemandesChequierByAgence/{agent.AgenceId}";
+
+                var response = await _httpClient.GetAsync(apiUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return StatusCode((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+                }
+
+                var demandes = await response.Content.ReadFromJsonAsync<IEnumerable<DemandeChequier>>();
+
+                var today = DateTime.Today;
+
+                int demandesEnCours = demandes.Count(d => d.Status == DemandeStatus.EnCoursPreparation);
+                int demandesPartiellementTraitees = demandes.Count(d => d.Status == DemandeStatus.DisponibleEnAgence);
+                int demandesTraitees = demandes.Count(d =>
+                    (d.Status == DemandeStatus.RemisAuClient || d.Status == DemandeStatus.Expedie)
+                    && d.IdAgent == agent.Id
+                    && d.DateTraitement?.Date == today);
+
+                int totalDemandes = demandesEnCours + demandesPartiellementTraitees + demandesTraitees;
+
+                return Ok(new
+                {
+                    Total = totalDemandes,
+                    EnCours = demandesEnCours,
+                    PartiellementTraitees = demandesPartiellementTraitees,
+                    Traitees = demandesTraitees
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération des statistiques de l'agent.");
+                return StatusCode(500, "Erreur interne du serveur.");
+            }
+        }
+
+
+
+
+
+
         [HttpGet("demandes-chequiers-par-rib")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -196,7 +257,6 @@ namespace STBEverywhere_back_APIAgent.Controllers
                 }
 
 
-            // URL de l'API cible
            
 
                 var apiUrl = $"http://localhost:5264/api/DemandeChequierApi/getDemandesChequierByAgence/{Agent.AgenceId}";
@@ -212,7 +272,7 @@ namespace STBEverywhere_back_APIAgent.Controllers
                 var demandes = await response.Content.ReadFromJsonAsync<IEnumerable<DemandeChequier>>();
 
                 // Filtrer pour ne garder que les demandes "EnAttente"
-                var demandesEnAttente = demandes?.Where(d => d.Status == DemandeStatus.EnCoursPreparation).ToList();
+                var demandesEnAttente = demandes?.Where(d => d.Status == DemandeStatus.EnCoursPreparation ||  d.Status == DemandeStatus.DisponibleEnAgence).ToList();
 
                 if (demandesEnAttente == null || !demandesEnAttente.Any())
                 {
