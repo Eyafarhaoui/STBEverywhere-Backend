@@ -20,8 +20,10 @@ using MailKit.Security;
 using MimeKit;
 using iTextSharp.text.pdf;
 using iTextSharp.text;
-using Microsoft.AspNetCore.Hosting;
 
+using iTextSharp.text.pdf.draw;
+
+using Microsoft.AspNetCore.Hosting;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -283,160 +285,360 @@ namespace STBEverywhere_back_APIClient.Controllers
 
         // Télécharger le fichier KYC
 
-       /* 
-         [HttpGet("kyc/download")]
-          [ProducesResponseType(StatusCodes.Status200OK)]
-          [ProducesResponseType(StatusCodes.Status404NotFound)]
-          [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-          public async Task<IActionResult> DownloadKYC()
-          {
-              var userId = GetUserIdFromToken();
-              var client = await _userRepository.GetClientByUserIdAsync(userId);
+        /*
+          [HttpGet("kyc/download")]
+           [ProducesResponseType(StatusCodes.Status200OK)]
+           [ProducesResponseType(StatusCodes.Status404NotFound)]
+           [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+           public async Task<IActionResult> DownloadKYC()
+           {
+               var userId = GetUserIdFromToken();
+               var client = await _userRepository.GetClientByUserIdAsync(userId);
 
 
-              if (client == null)
-              {
-                  return NotFound(new { message = "Client non trouvé" });
-              }
+               if (client == null)
+               {
+                   return NotFound(new { message = "Client non trouvé" });
+               }
 
-<<<<<<< HEAD
-            var pdfBytes = GenerateKYCReport(client);
-            return File(pdfBytes, "application/pdf", $"Fiche_KYC_{client.Nom}_{client.Prenom}.pdf");
+ <<<<<<< HEAD
+             var pdfBytes = GenerateKYCReport(client);
+             return File(pdfBytes, "application/pdf", $"Fiche_KYC_{client.Nom}_{client.Prenom}.pdf");
+         }
+
+
+
+
+               var pdfBytes = GenerateKYCReport(client);
+               return File(pdfBytes, "application/pdf", $"Fiche_KYC_{client.Nom}_{client.Prenom}.pdf");
+           }
+
+
+
+           // Générer un rapport KYC au format PDF
+           private byte[] GenerateKYCReport(Client client)
+           {
+               var pdf = PdfGenerator.GeneratePdf(GenerateKycHtml(client), (PdfSharp.PageSize)PageSize.A4);
+               using (var stream = new MemoryStream())
+               {
+                   pdf.Save(stream, false);
+                   return stream.ToArray();
+               }
+           }
+
+
+           // Générer le HTML pour le rapport KYC
+           private string GenerateKycHtml(Client client)
+           {
+               return $@"
+           <html>
+               <head>
+                   <style>
+                       body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                       h1 {{ color: #2c3e50; }}
+                       .info {{ margin-bottom: 15px; }}
+                       .label {{ font-weight: bold; color: #34495e; }}
+                       .section {{ margin-bottom: 30px; border-bottom: 1px solid #ddd; padding-bottom: 20px; }}
+                       .section h2 {{ color: #2980b9; margin-bottom: 10px; }}
+                       .photo-container {{ float: right; margin-left: 20px; margin-bottom: 20px; }}
+                       .photo-container img {{ width: 100px; height: auto; border-radius: 5px; border: 1px solid #ddd; }}
+                   </style>
+               </head>
+               <body>
+                   <h1>Fiche KYC - {client.Nom} {client.Prenom}</h1>
+
+                   <!-- Informations personnelles -->
+                   <div class='section'>
+                       <h2>Informations personnelles</h2>
+                       <div class='info'>
+                           <span class='label'>Nom:</span> {client.Nom}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Prénom:</span> {client.Prenom}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Date de naissance:</span> {client.DateNaissance.ToShortDateString()}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Genre:</span> {client.Genre}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Téléphone:</span> {client.Telephone}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Email:</span> {client.Email}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Adresse:</span> {client.Adresse}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Civilité:</span> {client.Civilite}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Nationalité:</span> {client.Nationalite}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>État civil:</span> {client.EtatCivil}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Résidence:</span> {client.Residence}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Pays de naissance:</span> {client.PaysNaissance ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Nom de la mère:</span> {client.NomMere ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Nom du père:</span> {client.NomPere ?? "Non renseigné"}
+                       </div>
+                   </div>
+
+                   <!-- Informations d'identification -->
+                   <div class='section'>
+                       <h2>Informations d'identification</h2>
+                       <div class='info'>
+                           <span class='label'>Numéro CIN:</span> {client.NumCIN ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Date de délivrance CIN:</span> {client.DateDelivranceCIN?.ToShortDateString() ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Date d'expiration CIN:</span> {client.DateExpirationCIN?.ToShortDateString() ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Lieu de délivrance CIN:</span> {client.LieuDelivranceCIN ?? "Non renseigné"}
+                       </div>
+                   </div>
+
+                   <!-- Informations professionnelles -->
+                   <div class='section'>
+                       <h2>Informations professionnelles</h2>
+                       <div class='info'>
+                           <span class='label'>Profession:</span> {client.Profession ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Situation professionnelle:</span> {client.SituationProfessionnelle ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Niveau d'éducation:</span> {client.NiveauEducation ?? "Non renseigné"}
+                       </div>
+                       <div class='info'>
+                           <span class='label'>Revenu mensuel:</span> {client.RevenuMensuel.ToString("C")}
+                       </div>
+                   </div>
+
+                   <!-- Informations familiales -->
+                   <div class='section'>
+                       <h2>Informations familiales</h2>
+                       <div class='info'>
+                           <span class='label'>Nombre d'enfants:</span> {client.NombreEnfants}
+                       </div>
+                   </div>
+               </body>
+           </html>
+       ";
+           }*/
+        [HttpGet("kyc/download")]
+        public async Task<IActionResult> DownloadKYC()
+        {
+            try
+            {
+                var userId = GetUserIdFromToken();
+                var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+                if (client == null)
+                    return NotFound(new { message = "Client non trouvé" });
+
+                // Génération du PDF avec iTextSharp
+                var pdfBytes = GenerateKYCReportWithITextSharp(client);
+                return File(pdfBytes, "application/pdf", $"Fiche_KYC_{client.Nom}_{client.Prenom}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la génération de la fiche KYC");
+                return StatusCode(500, new { message = "Erreur lors de la génération du PDF" });
+            }
         }
-      
 
+        private byte[] GenerateKYCReportWithITextSharp(Client client)
+        {
+            using (var memoryStream = new MemoryStream())
+            {
+                // 1. Configuration du document
+                var document = new Document(PageSize.A4, 40, 40, 60, 40); // Marge supérieure augmentée à 60
+                var writer = PdfWriter.GetInstance(document, memoryStream);
 
+                document.Open();
 
-              var pdfBytes = GenerateKYCReport(client);
-              return File(pdfBytes, "application/pdf", $"Fiche_KYC_{client.Nom}_{client.Prenom}.pdf");
-          }
+                // 2. Style des polices
+                var titleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 18, BaseColor.DarkGray);
+                var headerFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 10, BaseColor.Black);
+                var arabicFont = FontFactory.GetFont("c:/windows/fonts/arialuni.ttf", BaseFont.IDENTITY_H, 8); // Police supportant l'arabe
+                var sectionFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14, BaseColor.Blue);
+                var labelFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 11, BaseColor.Black);
+                var valueFont = FontFactory.GetFont(FontFactory.HELVETICA, 11, BaseColor.Black);
 
+                // 3. Entête avec logo STB
+                var logoPath = Path.Combine(_environment.WebRootPath, "images", "STBlogo.jpg");
+                if (System.IO.File.Exists(logoPath))
+                {
+                    var logo = Image.GetInstance(logoPath);
+                    logo.ScaleToFit(80, 80);
+                    logo.Alignment = Image.ALIGN_RIGHT;
+                    document.Add(logo);
+                }
 
+              
 
-          // Générer un rapport KYC au format PDF
-          private byte[] GenerateKYCReport(Client client)
-          {
-              var pdf = PdfGenerator.GeneratePdf(GenerateKycHtml(client), (PdfSharp.PageSize)PageSize.A4);
-              using (var stream = new MemoryStream())
-              {
-                  pdf.Save(stream, false);
-                  return stream.ToArray();
-              }
-          }
+                // 5. Mentions légales bilingues (Français/Arabe)
+                var headerTable = new PdfPTable(2) { WidthPercentage = 100 };
 
+                // Cellule française
+                var frenchCell = new PdfPCell(new Phrase(
+                    "Cette fiche d'identification client (KYC) est établie conformément\n" +
+                    "aux exigences réglementaires en matière de connaissance du client\n" +
+                    "et de prévention des risques financiers", headerFont))
+                {
+                    Border = Rectangle.NO_BORDER,
+                    PaddingBottom = 10
+                };
+                headerTable.AddCell(frenchCell);
 
-          // Générer le HTML pour le rapport KYC
-          private string GenerateKycHtml(Client client)
-          {
-              return $@"
-          <html>
-              <head>
-                  <style>
-                      body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                      h1 {{ color: #2c3e50; }}
-                      .info {{ margin-bottom: 15px; }}
-                      .label {{ font-weight: bold; color: #34495e; }}
-                      .section {{ margin-bottom: 30px; border-bottom: 1px solid #ddd; padding-bottom: 20px; }}
-                      .section h2 {{ color: #2980b9; margin-bottom: 10px; }}
-                      .photo-container {{ float: right; margin-left: 20px; margin-bottom: 20px; }}
-                      .photo-container img {{ width: 100px; height: auto; border-radius: 5px; border: 1px solid #ddd; }}
-                  </style>
-              </head>
-              <body>
-                  <h1>Fiche KYC - {client.Nom} {client.Prenom}</h1>
+               
 
-                  <!-- Informations personnelles -->
-                  <div class='section'>
-                      <h2>Informations personnelles</h2>
-                      <div class='info'>
-                          <span class='label'>Nom:</span> {client.Nom}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Prénom:</span> {client.Prenom}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Date de naissance:</span> {client.DateNaissance.ToShortDateString()}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Genre:</span> {client.Genre}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Téléphone:</span> {client.Telephone}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Email:</span> {client.Email}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Adresse:</span> {client.Adresse}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Civilité:</span> {client.Civilite}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Nationalité:</span> {client.Nationalite}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>État civil:</span> {client.EtatCivil}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Résidence:</span> {client.Residence}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Pays de naissance:</span> {client.PaysNaissance ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Nom de la mère:</span> {client.NomMere ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Nom du père:</span> {client.NomPere ?? "Non renseigné"}
-                      </div>
-                  </div>
+                document.Add(headerTable);
+                // 4. Titre principal centré
+                var title = new Paragraph("FICHE KYC - CONNAISSANCE DE CLIENT", titleFont)
+                {
+                    Alignment = Element.ALIGN_CENTER,
+                    SpacingAfter = 10
+                };
+                document.Add(title);
 
-                  <!-- Informations d'identification -->
-                  <div class='section'>
-                      <h2>Informations d'identification</h2>
-                      <div class='info'>
-                          <span class='label'>Numéro CIN:</span> {client.NumCIN ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Date de délivrance CIN:</span> {client.DateDelivranceCIN?.ToShortDateString() ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Date d'expiration CIN:</span> {client.DateExpirationCIN?.ToShortDateString() ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Lieu de délivrance CIN:</span> {client.LieuDelivranceCIN ?? "Non renseigné"}
-                      </div>
-                  </div>
+                // 6. Ligne de séparation
+                document.Add(new Chunk(new LineSeparator(1f, 100f, BaseColor.Black, Element.ALIGN_CENTER, -1)));
 
-                  <!-- Informations professionnelles -->
-                  <div class='section'>
-                      <h2>Informations professionnelles</h2>
-                      <div class='info'>
-                          <span class='label'>Profession:</span> {client.Profession ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Situation professionnelle:</span> {client.SituationProfessionnelle ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Niveau d'éducation:</span> {client.NiveauEducation ?? "Non renseigné"}
-                      </div>
-                      <div class='info'>
-                          <span class='label'>Revenu mensuel:</span> {client.RevenuMensuel.ToString("C")}
-                      </div>
-                  </div>
+                // 7. Titre client
+                var clientTitle = new Paragraph($"CLIENT: {client.Nom} {client.Prenom}", titleFont)
+                {
+                    Alignment = Element.ALIGN_CENTER,
+                    SpacingBefore = 15,
+                    SpacingAfter = 20
+                };
+                document.Add(clientTitle);
 
-                  <!-- Informations familiales -->
-                  <div class='section'>
-                      <h2>Informations familiales</h2>
-                      <div class='info'>
-                          <span class='label'>Nombre d'enfants:</span> {client.NombreEnfants}
-                      </div>
-                  </div>
-              </body>
-          </html>
-      ";
-          }*/
+                // 8. Photo du client (si disponible)
+                if (!string.IsNullOrEmpty(client.PhotoClient))
+                {
+                    var photoPath = Path.Combine(_environment.WebRootPath, "images", client.PhotoClient);
+                    if (System.IO.File.Exists(photoPath))
+                    {
+                        var photo = Image.GetInstance(photoPath);
+                        photo.ScaleToFit(100, 100);
+                        photo.Alignment = Image.ALIGN_RIGHT;
+                        document.Add(photo);
+                    }
+                }
+
+                // 6. Sections détaillées
+                AddClientSection(document, "INFORMATIONS PERSONNELLES", sectionFont, new Dictionary<string, string>
+                {
+                    ["Nom"] = client.Nom,
+                    ["Prénom"] = client.Prenom,
+                    ["Date de naissance"] = client.DateNaissance.ToString("dd/MM/yyyy"),
+                    ["Genre"] = client.Genre,
+                    ["Téléphone"] = client.Telephone,
+                    ["Email"] = client.Email,
+                    ["Adresse"] = client.Adresse,
+                    ["Civilité"] = client.Civilite,
+                    ["Nationalité"] = client.Nationalite,
+                    ["État civil"] = client.EtatCivil,
+                    ["Résidence"] = client.Residence,
+                    ["Pays de naissance"] = client.PaysNaissance ?? "Non renseigné",
+                    ["Nom de la mère"] = client.NomMere ?? "Non renseigné",
+                    ["Nom du père"] = client.NomPere ?? "Non renseigné"
+                }, labelFont, valueFont);
+
+                AddClientSection(document, "INFORMATIONS D'IDENTIFICATION", sectionFont, new Dictionary<string, string>
+                {
+                    ["Numéro CIN"] = client.NumCIN ?? "Non renseigné",
+                    ["Date délivrance"] = client.DateDelivranceCIN?.ToString("dd/MM/yyyy") ?? "Non renseigné",
+                    ["Date expiration"] = client.DateExpirationCIN?.ToString("dd/MM/yyyy") ?? "Non renseigné",
+                    ["Lieu délivrance"] = client.LieuDelivranceCIN ?? "Non renseigné"
+                }, labelFont, valueFont);
+
+                AddClientSection(document, "INFORMATIONS PROFESSIONNELLES", sectionFont, new Dictionary<string, string>
+                {
+                    ["Profession"] = client.Profession ?? "Non renseigné",
+                    ["Situation professionnelle"] = client.SituationProfessionnelle ?? "Non renseigné",
+                    ["Niveau d'éducation"] = client.NiveauEducation ?? "Non renseigné",
+                    ["Revenu mensuel"] = $"{client.RevenuMensuel:0.000} TND"
+                }, labelFont, valueFont);
+
+                AddClientSection(document, "INFORMATIONS FAMILIALES", sectionFont, new Dictionary<string, string>
+                {
+                    ["Nombre d'enfants"] = client.NombreEnfants.ToString()
+                }, labelFont, valueFont);
+
+                // 7. Pied de page
+                var footer = new Paragraph($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm}", FontFactory.GetFont(FontFactory.HELVETICA_OBLIQUE, 10))
+                {
+                    Alignment = Element.ALIGN_CENTER
+                };
+                document.Add(footer);
+
+                document.Close();
+                return memoryStream.ToArray();
+            }
+        }
+
+        private void AddClientSection(Document document, string title, Font titleFont,
+            Dictionary<string, string> data, Font labelFont, Font valueFont)
+        {
+            // Titre de section
+            var sectionTitle = new Paragraph(title, titleFont)
+            {
+                SpacingBefore = 15,
+                SpacingAfter = 10
+            };
+            document.Add(sectionTitle);
+
+            // Tableau des données
+            var table = new PdfPTable(2)
+            {
+                WidthPercentage = 100,
+                SpacingBefore = 5,
+                SpacingAfter = 10
+            };
+
+            // Configuration des cellules
+            var cellPadding = 5;
+            var labelCell = new PdfPCell
+            {
+                BackgroundColor = new BaseColor(240, 240, 240),
+                Padding = cellPadding,
+                BorderWidth = 0.5f
+            };
+
+            var valueCell = new PdfPCell
+            {
+                Padding = cellPadding,
+                BorderWidth = 0.5f
+            };
+
+            // Ajout des données
+            foreach (var item in data)
+            {
+                labelCell.Phrase = new Phrase(item.Key + ":", labelFont);
+                table.AddCell(labelCell);
+
+                valueCell.Phrase = new Phrase(item.Value, valueFont);
+                table.AddCell(valueCell);
+            }
+
+            document.Add(table);
+        }
         private int GetUserIdFromToken()
         {
             try
@@ -723,287 +925,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode(500, new { message = "Une erreur est survenue lors de la suppression de l'image." });
             }
         }
-        /*
-
-
-             [HttpPost("upload-documents")]
-             [Consumes("multipart/form-data")]
-             public async Task<IActionResult> UploadStudentDocuments(
-             [FromForm] StudentPackDto documentsDto,
-             [FromServices] EmailService emailService,
-             [FromServices] ILogger<ClientController> logger)
-                {
-                    try
-                    {
-                        // 1. Récupérer l'ID du client à partir du token
-                        var userId = GetUserIdFromToken();
-                        var clientstb = await _userRepository.GetClientByUserIdAsync(userId);
-                        var clientId = clientstb.Id;
-
-                        // Check if client exists
-                        var client = await _context.Clients.FindAsync(clientId);
-                        if (client == null)
-                        {
-                            return NotFound("Client not found");
-                        }
-
-                        // Vérifier si le client a déjà une demande en cours
-                        var existingRequest = await _context.PackStudents
-                            .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Pending" || p.Status == "Processing"));
-
-                        if (existingRequest != null)
-                        {
-                            return BadRequest("Vous avez déjà une demande en cours. Vous ne pouvez pas soumettre une nouvelle demande tant que la précédente n'est pas traitée.");
-                        }
-
-                        // Create client-specific directory
-                        var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"client_{clientId}");
-                        if (!Directory.Exists(clientUploadsPath))
-                        {
-                            Directory.CreateDirectory(clientUploadsPath);
-                        }
-
-                        // Save files and get file names
-                        var passportFileName = await SaveFileAndGetName(documentsDto.Document1, clientUploadsPath);
-                        var inscriptionFileName = await SaveFileAndGetName(documentsDto.Document2, clientUploadsPath);
-                        var bourseFileName = await SaveFileAndGetName(documentsDto.Document3, clientUploadsPath);
-                        var domicileTunisieFileName = await SaveFileAndGetName(documentsDto.Document4, clientUploadsPath);
-
-                        string? domicileFranceFileName = null;
-                        if (documentsDto.Document5 != null)
-                        {
-                            domicileFranceFileName = await SaveFileAndGetName(documentsDto.Document5, clientUploadsPath);
-                        }
-
-                        // Create new PackStudent record
-                        var packStudent = new PackStudent
-                        {
-                            PassportPath = passportFileName,
-                            InscriptionPath = inscriptionFileName,
-                            BoursePath = bourseFileName,
-                            DomicileTunisiePath = domicileTunisieFileName,
-                            DomicileFrancePath = domicileFranceFileName,
-                            SelectedAgency = documentsDto.Agency,
-                            SubmissionDate = DateTime.UtcNow,
-                            Status = "Pending",
-                            ClientId = clientId
-                        };
-
-                        _context.PackStudents.Add(packStudent);
-                        await _context.SaveChangesAsync();
-
-                        // Préparation des pièces jointes
-                        var attachments = new List<string>
-                {
-                    Path.Combine(clientUploadsPath, passportFileName),
-                    Path.Combine(clientUploadsPath, inscriptionFileName),
-                    Path.Combine(clientUploadsPath, bourseFileName),
-                    Path.Combine(clientUploadsPath, domicileTunisieFileName)
-                };
-
-                        if (domicileFranceFileName != null)
-                        {
-                            attachments.Add(Path.Combine(clientUploadsPath, domicileFranceFileName));
-                        }
-
-                        // Envoi de l'email avec pièces jointes
-                        try
-                        {
-                            var emailSubject = "Nouvelle demande Pack Student";
-                            var emailBody = $@"
-        Un client STB veut s'inscrire au pack student.
-
-        Détails de la demande:
-        - ID Client: {clientId}
-        - Agence sélectionnée: {documentsDto.Agency}
-        - Date de soumission: {DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm")}
-
-        Les documents sont joints à cet email.";
-
-                            await emailService.SendEmailWithAttachmentsAsync(
-                                "guesmii.ikram@gmail.com",
-                                emailSubject,
-                                emailBody,
-                                attachments);
-                        }
-                        catch (Exception emailEx)
-                        {
-                            logger.LogError(emailEx, "Erreur lors de l'envoi de l'email de notification");
-                        }
-
-                        return Ok(new
-                        {
-                            message = "Documents envoyés avec succès!",
-                            packStudentId = packStudent.Id
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Erreur lors de l'envoi des documents");
-                        return StatusCode(500, $"Erreur lors de l'envoi des documents: {ex.Message}");
-                    }
-                }
-                private async Task<string> SaveFileAndGetName(IFormFile file, string uploadsPath)
-                {
-                    if (file == null || file.Length == 0)
-                    {
-                        throw new ArgumentException("File is empty");
-                    }
-
-                    // Keep original file name and extension
-                    var fileName = file.FileName;
-                    var filePath = Path.Combine(uploadsPath, fileName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
-                    return fileName; // Return only the file name with extension
-                }
-
-
-
-                [HttpPost("upload-documents-elyssa")]
-                [Consumes("multipart/form-data")]
-                public async Task<IActionResult> UploadElyssaDocuments(
-             [FromForm] PackElyssaDto documentsDto,
-             [FromServices] EmailService emailService,
-             [FromServices] ILogger<ClientController> logger)
-                {
-                    try
-                    {
-                        // 1. Récupérer l'ID du client à partir du token
-                        var userId = GetUserIdFromToken();
-                        var clientstb = await _userRepository.GetClientByUserIdAsync(userId);
-                        var clientId = clientstb.Id;
-
-                        // Check if client exists
-                        var client = await _context.Clients.FindAsync(clientId);
-                        if (client == null)
-                        {
-                            return NotFound("Client not found");
-                        }
-
-                        // Vérifier si le client a déjà une demande en cours
-                        var existingRequest = await _context.PackElyssa
-                            .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Pending" || p.Status == "Processing"));
-
-                        if (existingRequest != null)
-                        {
-                            return BadRequest("Vous avez déjà une demande en cours. Vous ne pouvez pas soumettre une nouvelle demande tant que la précédente n'est pas traitée.");
-                        }
-
-                        // Create client-specific directory
-                        var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"Pack_Elyssa_client_{clientId}");
-                        if (!Directory.Exists(clientUploadsPath))
-                        {
-                            Directory.CreateDirectory(clientUploadsPath);
-                        }
-
-
-                        var passportFileName = await SaveFileAndGetName(documentsDto.Document1, clientUploadsPath);
-                        var longStayVisaFileName = documentsDto.Document2 != null
-                            ? await SaveFileAndGetName(documentsDto.Document2, clientUploadsPath)
-                            : null;
-                        var visaRegistrationFileName = documentsDto.Document3 != null
-                            ? await SaveFileAndGetName(documentsDto.Document3, clientUploadsPath)
-                            : null;
-                        var frenchResidenceFileName = await SaveFileAndGetName(documentsDto.Document4, clientUploadsPath);
-                        var cdiContractFileName = await SaveFileAndGetName(documentsDto.Document5, clientUploadsPath);
-                        var taxCertificateFileName = await SaveFileAndGetName(documentsDto.Document6, clientUploadsPath);
-                        // Save files and get file names
-
-
-                        // Create new PackStudent record
-                        var packElyssa = new PackElyssa
-                        {
-                            PassportPath = passportFileName,
-                            LongStayVisaPath = longStayVisaFileName,
-                            VisaRegistrationPath = visaRegistrationFileName,
-                            FrenchResidenceProofPath = frenchResidenceFileName,
-                            CDIContractPath = cdiContractFileName,
-                            TaxWithholdingCertificatePath = taxCertificateFileName,
-                            SelectedAgency = documentsDto.Agency,
-                            SubmissionDate = DateTime.UtcNow,
-                            Status = "Pending",
-                            ClientId = clientId
-                        };
-
-
-                        _context.PackElyssa.Add(packElyssa);
-                        await _context.SaveChangesAsync();
-
-                        var attachments = new List<string>
-                {
-                    Path.Combine(clientUploadsPath, passportFileName),
-                    Path.Combine(clientUploadsPath, frenchResidenceFileName),
-                    Path.Combine(clientUploadsPath, cdiContractFileName),
-                    Path.Combine(clientUploadsPath, taxCertificateFileName)
-                };
-
-                        if (longStayVisaFileName != null)
-                            attachments.Add(Path.Combine(clientUploadsPath, longStayVisaFileName));
-                        if (visaRegistrationFileName != null)
-                            attachments.Add(Path.Combine(clientUploadsPath, visaRegistrationFileName));
-
-                        // Envoi de l'email avec pièces jointes
-                        try
-                        {
-                            var emailSubject = "Nouvelle demande Pack Elyssa";
-                            var emailBody = $@"
-        Un client STB veut s'inscrire au pack Elyssa.
-
-        Détails de la demande:
-        - ID Client: {clientId}
-        - Agence sélectionnée: {documentsDto.Agency}
-        - Date de soumission: {DateTime.UtcNow.ToString("dd/MM/yyyy HH:mm")}
-
-        Les documents sont joints à cet email.";
-
-                            await emailService.SendEmailWithAttachmentsAsync(
-                                "guesmii.ikram@gmail.com",
-                                emailSubject,
-                                emailBody,
-                                attachments);
-                        }
-                        catch (Exception emailEx)
-                        {
-                            logger.LogError(emailEx, "Erreur lors de l'envoi de l'email de notification");
-                        }
-
-                        return Ok(new
-                        {
-                            message = "Documents envoyés avec succès!",
-                            packElyssaId = packElyssa.Id
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Erreur lors de l'envoi des documents");
-                        return StatusCode(500, $"Erreur lors de l'envoi des documents: {ex.Message}");
-                    }
-                }
-                private async Task<string> SaveFileAndGetName2(IFormFile file, string uploadsPath)
-                {
-                    if (file == null || file.Length == 0)
-                    {
-                        throw new ArgumentException("File is empty");
-                    }
-
-                    // Keep original file name and extension
-                    var fileName = file.FileName;
-                    var filePath = Path.Combine(uploadsPath, fileName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
-                    return fileName; // Return only the file name with extension
-                }
-                */
-
+      
 
         [HttpPost("upload-documents")]
         [Consumes("multipart/form-data")]
@@ -1022,11 +944,18 @@ namespace STBEverywhere_back_APIClient.Controllers
                 }
 
                 var existingRequest = await _context.PackStudents
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Pending" || p.Status == "EnAttente"));
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && ( p.Status == "EnAttente"));
 
                 if (existingRequest != null)
                 {
                     return BadRequest("Vous avez déjà une demande en cours.");
+                }
+                var existinngRequest = await _context.PackStudents
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee" ));
+
+                if (existinngRequest != null)
+                {
+                    return BadRequest("Vous étes deja inscrit au pack.");
                 }
 
                 var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"client_{clientId}");
@@ -1091,12 +1020,19 @@ namespace STBEverywhere_back_APIClient.Controllers
                     return NotFound("Client not found");
                 }
 
-                var existingRequest = await _context.PackElyssa
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Pending" || p.Status == "EnAttente"));
+                var existingRequest = await _context.PackStudents
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "EnAttente"));
 
                 if (existingRequest != null)
                 {
                     return BadRequest("Vous avez déjà une demande en cours.");
+                }
+                var existinngRequest = await _context.PackStudents
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee"));
+
+                if (existinngRequest != null)
+                {
+                    return BadRequest("Vous étes deja inscrit au pack.");
                 }
 
                 var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"Pack_Elyssa_client_{clientId}");

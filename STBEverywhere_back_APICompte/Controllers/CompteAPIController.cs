@@ -266,7 +266,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             compte.ClientId = (int)clientId;
             compte.NumCin = client.NumCin;
             compte.NbrOperationsAutoriseesParJour = "illimité";
-            compte.MontantMaxAutoriseParJour = 2000.000m;
+            compte.MontantMaxAutoriseParJour = "illimité";
             compte.DecouvertAutorise = compteDto.type.ToLower() == "epargne" ? null : 0; 
 
             compte.IBAN = iban;
@@ -544,7 +544,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                     ClientId = client.Id,
                     NumCin = "TECHNIQUE", // Valeur spéciale pour les comptes techniques
                     NbrOperationsAutoriseesParJour = "illimité",
-                    MontantMaxAutoriseParJour = 1000000.000m, // Limite haute pour les comptes techniques
+                    MontantMaxAutoriseParJour = "illimité", // Limite haute pour les comptes techniques
                     DecouvertAutorise = null // Pas de découvert pour les comptes techniques
                 };
 
