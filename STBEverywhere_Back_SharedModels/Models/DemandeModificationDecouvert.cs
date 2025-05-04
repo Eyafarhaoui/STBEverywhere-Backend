@@ -12,7 +12,8 @@ namespace STBEverywhere_Back_SharedModels.Models
         public string RIBCompte { get; set; }
 
         [Required]
-        public decimal DecouvertDemande { get; set; }
+        [Column(TypeName = "decimal(10,3)")]
+         public decimal DecouvertDemande { get; set; }
 
         [Required]
         public StatutDemandeEnum StatutDemande { get; set; } = StatutDemandeEnum.EnAttente;
@@ -23,7 +24,7 @@ namespace STBEverywhere_Back_SharedModels.Models
         public string? MotifRefus { get; set; }
 
         public int? IdAgentRepondant { get; set; }
-
+        public DateTime? DateTraitement { get; set; }
         public bool NotificationEnvoyee { get; set; } = false;
 
         public bool MailEnvoyee { get; set; } = false;

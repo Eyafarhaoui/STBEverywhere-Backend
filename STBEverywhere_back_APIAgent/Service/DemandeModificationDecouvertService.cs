@@ -25,7 +25,7 @@ namespace STBEverywhere_back_APIAgent.Service
             demande.StatutDemande = accepte ? StatutDemandeEnum.Accepte : StatutDemandeEnum.Refuse; ;
             demande.MotifRefus = accepte ? null : motifRefus;
             demande.IdAgentRepondant = idAgent;
-
+            demande.DateTraitement = DateTime.Now;
             await _repository.UpdateAsync(demande);
         }
 

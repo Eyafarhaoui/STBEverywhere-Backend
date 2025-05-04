@@ -26,31 +26,28 @@ namespace STBEverywhere_Back_SharedModels.Models
         public bool Otp { get; set; }
 
         [Required]
-        public ModeLivraison ModeLivraison { get; set; } // Ajout du mode de livraison
+        public ModeLivraison ModeLivraison { get; set; } 
+        public string? AdresseComplete { get; set; } // EnvoiRecommande
 
-        //public string? Agence { get; set; } // Obligatoire si "LivraisonAgence"
-
-        public string? AdresseComplete { get; set; } // Obligatoire si "EnvoiRecommande"
-
-        public string? CodePostal { get; set; } // Obligatoire si "EnvoiRecommande"
+        public string? CodePostal { get; set; } //EnvoiRecommande
 
         [Required, EmailAddress]
-        public string Email { get; set; } // Email du client
-
+        public string Email { get; set; } 
         [Required]
         [RegularExpression(@"^\d{8}$", ErrorMessage = "Le numéro de téléphone doit contenir 8 chiffres.")]
-        public string NumTel { get; set; } // Numéro de téléphone
+        public string NumTel { get; set; } 
+        //[Required]
+        //public string NumeroChequier { get; set; } = Guid.NewGuid().ToString("N").Substring(0, 10);
 
         [Required]
-        public string NumeroChequier { get; set; } = Guid.NewGuid().ToString("N").Substring(0, 10);
-
-        [Required]
+        [Column(TypeName = "decimal(10,3)")]
         public decimal PlafondChequier { get; set; }
-        public string? RaisonDemande { get; set; } // Raison de la demande de chéquier non barré
-        public bool? AccepteEngagement { get; set; } // Accepte l'engagement pour l'encaissement en espèces (nullable)
-
-        public bool isBarre { get; set; } // Indicateur si le chéquier est barré ou non
+        public string? RaisonDemande { get; set; } //chéquier non barré
+        public bool? AccepteEngagement { get; set; } 
+        public bool isBarre { get; set; } 
         public int? IdAgent { get; set; }
+        public DateTime? DateTraitement { get; set; }
+
         public ICollection<FeuilleChequier> Feuilles { get; set; } = new List<FeuilleChequier>();
 
         // Relation One-to-Many : Une demande peut avoir plusieurs e-mails

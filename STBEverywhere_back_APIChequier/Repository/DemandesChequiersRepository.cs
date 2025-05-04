@@ -24,11 +24,11 @@ namespace STBEverywhere_back_APIChequier.Repository
 
 
 
-        public async Task<DemandeChequier> GetDemandeByNumeroChequier(string numeroChequier)
+        public async Task<DemandeChequier> GetDemandeByChequier(int demandeId)
         {
             return await _context.DemandesChequiers
                 .Include(d => d.Feuilles) 
-                .FirstOrDefaultAsync(d => d.NumeroChequier == numeroChequier);
+                .FirstOrDefaultAsync(d => d.IdDemande == demandeId);
         }
 
         public async Task<IEnumerable<FeuilleChequier>> GetFeuillesByDemandeId(int demandeId)

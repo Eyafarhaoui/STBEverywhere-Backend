@@ -20,16 +20,18 @@ namespace STBEverywhere_back_APIChequier.Controllers
     {
         private readonly IChequierRepository _repository;
         private readonly IDemandesChequiersRepository _demandesChequiersRepository;
+        private readonly IFraisChequierRepository _fraisChequierRepository;
         private readonly ILogger<ChequierController> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IUserRepository _userRepository;
-        public ChequierController(IChequierRepository repository, IDemandesChequiersRepository demandesChequiersRepository, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository, HttpClient httpClient, ILogger<ChequierController> logger)
+        public ChequierController(IFraisChequierRepository fraisChequierRepository,IChequierRepository repository, IDemandesChequiersRepository demandesChequiersRepository, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository, HttpClient httpClient, ILogger<ChequierController> logger)
         {
             _repository = repository;
             _demandesChequiersRepository = demandesChequiersRepository;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
             _userRepository = userRepository;
+            _fraisChequierRepository = fraisChequierRepository;
         }
 
         [HttpGet("cheques")]
@@ -80,10 +82,12 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 {
                     Status = c.Status.ToString(),
                     c.DateLivraison,
-                    NumeroChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).NumeroChequier,
+                    //NumeroChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).NumeroChequier,
                     PlafondChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).PlafondChequier,
                     RibCompte = demandes.First(d => d.IdDemande == c.DemandeChequierId).RibCompte,
                     Type = demandes.First(d => d.IdDemande == c.DemandeChequierId).isBarre ? "Barré" : "Non barré",
+                    DemandeChequierId=c.DemandeChequierId,
+
                     //AgenceLivraison = demandes.First(d => d.IdDemande == c.DemandeChequierId).Agence // Agence de livraison
                 }).ToList();
 
@@ -101,11 +105,11 @@ namespace STBEverywhere_back_APIChequier.Controllers
 
 
 
-        [HttpGet("feuilles/{numeroChequier}")]
+        [HttpGet("feuilles/{idDemande}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> GetFeuillesParChequier(string numeroChequier)
+        public async Task<IActionResult> GetFeuillesParChequier(int idDemande)
         {
             try
             {
@@ -115,7 +119,7 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 var ribComptes = await _demandesChequiersRepository.GetRibComptesByClientId(client.Id);
 
                 // Trouver la demande correspondant au numéro de chéquier
-                var demande = await _demandesChequiersRepository.GetDemandeByNumeroChequier(numeroChequier);
+                var demande = await _demandesChequiersRepository.GetDemandeByChequier(idDemande);
                 if (demande == null) return NotFound("Chéquier non trouvé");
 
                 // Vérifier que le compte appartient bien au client
@@ -157,8 +161,8 @@ namespace STBEverywhere_back_APIChequier.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetChequesParRibCompte(string ribCompte)
         {
-            var userId = GetUserIdFromToken();
-            var client = await _userRepository.GetClientByUserIdAsync(userId);
+            /*var userId = GetUserIdFromToken();
+            var client = await _userRepository.GetClientByUserIdAsync(userId);*/
           
 
            
@@ -186,7 +190,7 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 {
                     Status = c.Status.ToString(),
                     c.DateLivraison,
-                    NumeroChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).NumeroChequier,
+                    //NumeroChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).NumeroChequier,
                     PlafondChequier = demandes.First(d => d.IdDemande == c.DemandeChequierId).PlafondChequier,
                     RibCompte = demandes.First(d => d.IdDemande == c.DemandeChequierId).RibCompte,
                     Type = demandes.First(d => d.IdDemande == c.DemandeChequierId).isBarre ? "Barré" : "Non barré",
@@ -202,7 +206,29 @@ namespace STBEverywhere_back_APIChequier.Controllers
         }
 
 
-      
+
+
+        [HttpGet("frais/by-rib/{rib}")]
+        [ProducesResponseType(StatusCodes.Status200OK)] // Si des frais sont trouvés
+        [ProducesResponseType(StatusCodes.Status404NotFound)] // Si aucun frais n'est trouvé
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)] // En cas d'erreur serveur
+        public async Task<IActionResult> GetFraisByRib(string rib)
+        {
+            try
+            {
+                var frais = await _fraisChequierRepository.GetFraisChequiersByCompteAsync(rib);
+
+                if (!frais.Any())
+                    return NotFound($"Aucun frais trouvé pour le RIB : {rib}");
+
+                return Ok(frais);
+            }
+            catch (Exception ex)
+            {
+                // Log de l'erreur possible ici (ex.Message)
+                return StatusCode(StatusCodes.Status500InternalServerError, "Une erreur interne s'est produite.");
+            }
+        }
 
 
 
