@@ -44,7 +44,16 @@ namespace STBEverywhere_back_APIClient.Controllers
             try
             {
                 var userId = GetUserIdFromToken();
+             // var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+
                 var client = await _userRepository.GetClientByUserIdAsync(userId);
+                if (client == null)
+                {
+                    return BadRequest("Client not found.");
+                }
+
+
 
                 var reclamation = new Reclamation
                 {
@@ -86,7 +95,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             {
                 var reclamations = await _dbContext.Reclamations
                     .Include(r => r.Client) // Inclure les données du client
-                    .Where(r => r.Statut == ReclamationStatut.EnCours && r.Client.AgenceId == agenceId)
+                    .Where(r =>  r.Client.AgenceId == agenceId)
                     .OrderByDescending(r => r.DateCreation)
                     .Select(r => new
                     {
@@ -225,7 +234,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode((int)HttpStatusCode.InternalServerError, "Une erreur est survenue");
             }
         }
-
+        
         private int GetUserIdFromToken()
         {
             try
@@ -268,6 +277,8 @@ namespace STBEverywhere_back_APIClient.Controllers
                 throw new UnauthorizedAccessException("Erreur de traitement du token", ex);
             }
         }
+     
+
 
 
 

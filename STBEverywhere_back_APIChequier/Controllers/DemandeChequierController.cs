@@ -15,6 +15,7 @@ using Org.BouncyCastle.Crypto;
 using STBEverywhere_Back_SharedModels;
 using System.Text;
 using STBEverywhere_back_APIChequier.Repository;
+using Newtonsoft.Json;
 namespace STBEverywhere_back_APIChequier.Controllers
 {
     [Route("api/DemandeChequierApi")]
@@ -25,14 +26,16 @@ namespace STBEverywhere_back_APIChequier.Controllers
         private readonly EmailService _emailService;
         //private readonly ILogger<DemandeChequierController> _logger;
         private readonly IDemandesChequiersRepository _repository;
+        private readonly IFraisChequierRepository _fraisRepository;
         private readonly HttpClient _httpClient;
         private readonly ILogger<DemandeChequierController> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IUserRepository _userRepository;
         private readonly IDemandesChequiersRepository _DemandesChequiersRepository;
+        private readonly IChequierRepository _ChequiersRepository;
 
 
-        public DemandeChequierController(IDemandesChequiersRepository DemandesChequiersRepository ,DemandeChequierService DemandeChequierService,ILogger<DemandeChequierController> logger,HttpClient httpClient, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository, IDemandesChequiersRepository repository,EmailService emailService)
+        public DemandeChequierController(IFraisChequierRepository fraisRepository, IChequierRepository ChequiersRepository, IDemandesChequiersRepository DemandesChequiersRepository ,DemandeChequierService DemandeChequierService,ILogger<DemandeChequierController> logger,HttpClient httpClient, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository, IDemandesChequiersRepository repository,EmailService emailService)
         {
             _logger = logger;
             _DemandeChequierService = DemandeChequierService;
@@ -41,8 +44,65 @@ namespace STBEverywhere_back_APIChequier.Controllers
             _repository = repository;
             _emailService = emailService;
             _httpContextAccessor = httpContextAccessor;
-           
+            _ChequiersRepository = ChequiersRepository;
+            _fraisRepository = fraisRepository;
+
+
             _userRepository = userRepository;
+        }
+
+
+
+
+
+        [HttpGet("getDemandesChequierById/{idDemande}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetDemandeById(int idDemande)
+        {
+            try
+            {
+                _logger.LogInformation("Recherche de la demande de chéquier avec ID: {IdDemande}", idDemande);
+
+                var demande = await _DemandesChequiersRepository.GetByIdAsync(idDemande);
+
+                if (demande == null)
+                {
+                    _logger.LogWarning("Aucune demande trouvée avec l'ID: {IdDemande}", idDemande);
+                    return NotFound(new { message = "Demande non trouvée." });
+                }
+
+                // Mapper les données comme dans GetDemandesParClient
+                var result = new
+                {
+                    demande.IdDemande,
+                    demande.RibCompte,
+                    demande.Compte,
+                    demande.DateDemande,
+                    demande.NombreFeuilles,
+                    Status = demande.Status.ToString(), // Convertir l'enum en string
+                    demande.Otp,
+                    ModeLivraison = demande.ModeLivraison.ToString(), // Convertir aussi ModeLivraison si nécessaire
+                    demande.AdresseComplete,
+                    demande.CodePostal,
+                    demande.Email,
+                    demande.NumTel,
+                    //demande.NumeroChequier,
+                    demande.PlafondChequier,
+                    demande.RaisonDemande,
+                    demande.AccepteEngagement,
+                    Type = demande.isBarre ? "chéque barré" : "chéque non barrée",
+                    demande.IdAgent,
+                    demande.Feuilles
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération de la demande avec ID: {IdDemande}", idDemande);
+                return StatusCode(500, new { message = "Erreur interne du serveur", erreur = ex.Message });
+            }
         }
 
 
@@ -103,13 +163,36 @@ namespace STBEverywhere_back_APIChequier.Controllers
                     return BadRequest("Statut non valide pour un envoi recommandé.");
                 }
 
-                // Mise à jour du statut et de l'agent ayant traité la demande
                 demande.Status = NouveauStatut;
                 demande.IdAgent = IdAgent;
-
+                demande.DateTraitement = DateTime.Now;
                 await _DemandesChequiersRepository.UpdateAsync(demande);
 
-                // Retourner une réponse claire et standardisée
+
+
+
+                // Création du chéquier uniquement si statut = RemisAuClient ou Expedie
+                if (NouveauStatut == DemandeStatus.RemisAuClient || NouveauStatut == DemandeStatus.Expedie)
+                {
+                    var existingChequier = await _ChequiersRepository.GetByDemandeIdAsync(demande.IdDemande);
+                    if (existingChequier == null)
+                    {
+                        var chequier = new Chequier
+                        {
+                            DemandeChequierId = demande.IdDemande,
+                            Status = ChequierStatus.Actif,
+                            DateLivraison = DateTime.Now,
+                            IdAgent = IdAgent
+                        };
+
+                        await _ChequiersRepository.AddAsync(chequier);
+                        await _ChequiersRepository.SaveAsync();
+                    }
+                }
+
+
+
+
                 return Ok(new { message = $"Demande {IdDemande} mise à jour avec succès." });
             }
             catch (Exception ex)
@@ -118,74 +201,101 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 return StatusCode(500, new { error = $"Erreur interne : {ex.Message}" });
             }
         }
-
-
-
-
         [HttpPost("DemandeChequierBarre")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-       
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> DemanderChequierBarre([FromBody] DemandeChequierDTO demandeDto)
         {
             if (demandeDto == null || string.IsNullOrWhiteSpace(demandeDto.RibCompte))
             {
-                return BadRequest("Les informations de la demande sont invalides.");
+                return BadRequest(new
+                {
+                    message = "Les informations de la demande sont invalides."
+                });
             }
 
-            // por verifier qu'un compte peut pas avoir plus qu'une demande en cours pour  même compte
+            // Vérifier qu’il n’y a pas déjà une demande en cours
             bool hasPendingRequest = await _repository.HasDemandeEncours(demandeDto.RibCompte);
             if (hasPendingRequest)
             {
-                return BadRequest("Une demande de chéquier est déjà en cours de préparation pour ce compte.");
-            }
-            // Vérifier si le compte est de type épargne
-            bool isEpargne = await _repository.IsCompteEpargne(demandeDto.RibCompte);
-            if (isEpargne)
-            {
-                return BadRequest("Les comptes de type épargne ne peuvent pas faire de demande de chéquier.");
-            }
-            
-
-            // Vérifier si le compte a déjà un chéquier actif
-            bool hasActiveChequier = await _repository.HasActiveChequier(demandeDto.RibCompte);
-            if (hasActiveChequier)
-            {
-                return BadRequest("Le compte a déjà un chéquier actif, vous ne pouvez pas soumettre une nouvelle demande.");
-            }
-
-            if (demandeDto.PlafondChequier > 30000)
-            {
-                return BadRequest("Le plafond du chéquier ne peut pas dépasser 30 000 dinars.");
-            }
-            // Validation du mode de livraison
-            /*if (demandeDto.ModeLivraison == ModeLivraison.LivraisonAgence)
-            {
-                if (string.IsNullOrWhiteSpace(demandeDto.Agence))
+                return BadRequest(new
                 {
-                    return BadRequest("L'agence doit être spécifiée pour une livraison en agence.");
-                }
+                    message = "Une demande de chéquier est déjà en cours pour ce compte."
+                });
             }
-            else */if (demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande)
+
+            // Récupération du compte via appel HTTP
+            var response = await _httpClient.GetAsync($"http://localhost:5185/api/compte/GetByRIB/{demandeDto.RibCompte}");
+            if (!response.IsSuccessStatusCode)
+            {
+                return NotFound("Compte introuvable via le service Compte.");
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var comptes = JsonConvert.DeserializeObject<List<Compte>>(content);
+            var compte = comptes.FirstOrDefault();
+
+            if (compte == null)
+            {
+                return NotFound("Compte non trouvé.");
+            }
+
+            // Vérification du type du compte
+            if (compte.Type.ToLower().Contains("epargne"))
+            {
+                return BadRequest(new
+                {
+                    message = "Les comptes de type épargne ne peuvent pas faire de demande de chéquier."
+                });
+            }
+
+            // Calcul des frais
+            decimal fraisChequier = 5.000m;
+            decimal fraisEnvoi = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
+            decimal totalFrais = fraisChequier + fraisEnvoi;
+
+            if (compte.Solde < totalFrais)
+            {
+                return BadRequest(new
+                {
+                    message = "Solde insuffisant pour couvrir les frais."
+                });
+            }
+
+            // Débit du compte via appel PUT
+            //F3 Formate le montant avec 3 décimales et remplace la virgule par un point pour l'URL
+
+            var debitResponse = await _httpClient.PutAsync(
+                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{totalFrais.ToString("F3").Replace(",", ".")}",
+                null);
+
+            if (!debitResponse.IsSuccessStatusCode)
+            {
+                return StatusCode((int)debitResponse.StatusCode, "Échec du débit des frais via le service Compte.");
+            }
+            if (demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande)
             {
                 if (string.IsNullOrWhiteSpace(demandeDto.AdresseComplete) || string.IsNullOrWhiteSpace(demandeDto.CodePostal))
                 {
-                    return BadRequest("L'adresse complète et le code postal sont obligatoires pour un envoi recommandé.");
+                    return BadRequest(new
+                    {
+                        message = "L'adresse complète et le code postal sont obligatoires pour un envoi recommandé."
+                    });
                 }
             }
 
 
             int totalFeuillesEmises = await _repository.CountFeuillesByRib(demandeDto.RibCompte);
 
-            // Créer une nouvelle demande de chéquier
+            // Création de la demande
             var demande = new DemandeChequier
             {
                 RibCompte = demandeDto.RibCompte,
                 NombreFeuilles = demandeDto.NombreFeuilles,
                 Otp = demandeDto.Otp,
                 //Agence = demandeDto.Agence,
-               // Agence = demandeDto.ModeLivraison == ModeLivraison.LivraisonAgence ? demandeDto.Agence : null,
+                // Agence = demandeDto.ModeLivraison == ModeLivraison.LivraisonAgence ? demandeDto.Agence : null,
                 AdresseComplete = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? demandeDto.AdresseComplete : null,
                 CodePostal = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? demandeDto.CodePostal : null,
                 Email = demandeDto.Email,
@@ -193,23 +303,21 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 PlafondChequier = demandeDto.PlafondChequier,
                 Status = DemandeStatus.EnCoursPreparation,
                 DateDemande = DateTime.Now,
-                isBarre=true,
+                isBarre = true,
                 AccepteEngagement = null,
                 RaisonDemande = null,
-                ModeLivraison=demandeDto.ModeLivraison
+                ModeLivraison = demandeDto.ModeLivraison
             };
-            
-
+            // Feuilles
             decimal plafondFeuille = Math.Round(demandeDto.PlafondChequier / demandeDto.NombreFeuilles, 2);
             decimal correction = demandeDto.PlafondChequier - (plafondFeuille * demandeDto.NombreFeuilles);
 
             for (int i = 0; i < demandeDto.NombreFeuilles; i++)
             {
                 decimal montantFeuille = plafondFeuille;
-                if (i == demandeDto.NombreFeuilles - 1) // Ajustement pour éviter des erreurs d’arrondi
-                {
+                if (i == demandeDto.NombreFeuilles - 1)
                     montantFeuille += correction;
-                }
+
                 int numFeuille = totalFeuillesEmises + i + 1;
                 string numeroFeuille = numFeuille.ToString("D7") + demandeDto.RibCompte;
 
@@ -220,20 +328,146 @@ namespace STBEverywhere_back_APIChequier.Controllers
                     DemandeChequier = demande
                 });
             }
-            await _repository.AddAsync(demande);
-            //await _context.DemandesChequiers.AddAsync(demande);
 
-            // Sauvegarder dans la base de données
-            //await _context.SaveChangesAsync();
+            await _repository.AddAsync(demande);
             await _repository.SaveAsync();
 
-            // Envoi d'un e-mail de confirmation
-            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier reçue",
-                $"Votre demande de chéquier a bien été enregistrée et est en cours de traitement.");
-
-            // Retourner une réponse après l'ajout des feuilles et l'envoi de l'email
-            return Ok(new { message = "Demande de chéquier soumise avec succès.", demandeId = demande.IdDemande });
+            // Ajout dans la table des frais
+            var fraisList = new List<FraisChequier>
+    {
+        new FraisChequier
+        {
+            type = "Frais chéquier barré",
+            Date = DateTime.UtcNow,
+            Montant = fraisChequier,
+            IdDemande = demande.IdDemande
         }
+
+    };
+
+            if (demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande)
+            {
+                fraisList.Add(new FraisChequier
+                {
+                    type = "Frais envoi recommandé",
+                    Date = DateTime.UtcNow,
+                    Montant = fraisEnvoi,
+                    IdDemande = demande.IdDemande
+                });
+            }
+
+            foreach (var frais in fraisList)
+            {
+                await _fraisRepository.AddAsync(frais);
+            }
+            await _fraisRepository.SaveAsync();
+            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
+               $"Votre demande a bien été enregistrée et est en cours de traitement.");
+            return Ok(new { message = "Demande de chéquier enregistrée et frais débités avec succès." });
+
+           
+        }
+
+
+        /*
+                [HttpPost("DemandeChequierBarre")]
+                [ProducesResponseType(StatusCodes.Status200OK)]
+                [ProducesResponseType(StatusCodes.Status404NotFound)]
+                [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+                public async Task<IActionResult> DemanderChequierBarre([FromBody] DemandeChequierDTO demandeDto)
+                {
+                    if (demandeDto == null || string.IsNullOrWhiteSpace(demandeDto.RibCompte))
+                    {
+                        return BadRequest("Les informations de la demande sont invalides.");
+                    }
+
+                    bool hasPendingRequest = await _repository.HasDemandeEncours(demandeDto.RibCompte);
+                    if (hasPendingRequest)
+                    {
+                        return BadRequest("Une demande de chéquier est déjà en cours de préparation pour ce compte.");
+                    }
+
+                    bool isEpargne = await _repository.IsCompteEpargne(demandeDto.RibCompte);
+                    if (isEpargne)
+                    {
+                        return BadRequest("Les comptes de type épargne ne peuvent pas faire de demande de chéquier.");
+                    }
+
+                    // Récupération du compte
+                    var response = await _httpClient.GetAsync($"https://localhost:port/api/compte/GetByRIB/{demandeDto.RibCompte}");
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return NotFound("Compte introuvable via le service Compte.");
+                    }
+
+                    var content = await response.Content.ReadAsStringAsync();
+                    var comptes = JsonConvert.DeserializeObject<List<Compte>>(content);
+                    var compte = comptes.FirstOrDefault();
+
+                    if (compte == null)
+                    {
+                        return NotFound("Compte non trouvé.");
+                    }
+
+
+                    // Calcul des frais
+                    decimal fraisChequier = 5.000m;
+                    decimal fraisEnvoi = demandeDto.ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
+                    decimal totalFrais = fraisChequier + fraisEnvoi;
+
+                    if (compte.Solde < totalFrais)
+                    {
+                        return BadRequest("Solde insuffisant pour couvrir les frais.");
+                    }
+
+                    // Débiter le compte
+                    compte.Solde -= totalFrais;
+
+                    // Créer la demande
+                    var demande = new DemandeChequier
+                    {
+                        RibCompte = demandeDto.RibCompte,
+                        DateDemande = DateTime.UtcNow
+                        // autres champs à mapper
+                    };
+                    await _repository.AddAsync(demande);
+                    await _repository.SaveAsync();
+
+                    // Ajouter les frais
+                    var fraisList = new List<FraisChequier>
+            {
+                new FraisChequier
+                {
+                    type = "Frais chéquier barre",
+                    Date = DateTime.UtcNow,
+                    Montant = fraisChequier,
+                    IdDemande = demande.IdDemande.ToString()
+                }
+            };
+
+                    if (demandeDto.ModeLivraison== ModeLivraison.EnvoiRecommande)
+                    {
+                        fraisList.Add(new FraisChequier
+                        {
+                            type = "Frais envoi recommandé",
+                            Date = DateTime.UtcNow,
+                            Montant = fraisEnvoi,
+                            IdDemande = demande.IdDemande.ToString()
+                        });
+                    }
+
+                    foreach (var frais in fraisList)
+                    {
+                        await _fraisRepository.AddAsync(frais); // à implémenter dans un repository
+                    }
+
+                    await _compteRepository.UpdateAsync(compte);
+                    await _compteRepository.SaveAsync();
+
+                    return Ok("Demande de chéquier enregistrée et frais débités avec succès.");
+                }
+                */
 
         [HttpPost("DemandeChequierNonBarre")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -242,81 +476,101 @@ namespace STBEverywhere_back_APIChequier.Controllers
         public async Task<IActionResult> DemanderChequierNonBarre([FromBody] DemandeChequierDTO demandeDto)
         {
             if (demandeDto == null || string.IsNullOrWhiteSpace(demandeDto.RibCompte) || string.IsNullOrWhiteSpace(demandeDto.RaisonDemande))
-            {
                 return BadRequest("Les informations de la demande sont invalides.");
-            }
-            // por verifier qu'un compte peut pas avoir plus qu'une demande en cours pour même compte
-            bool hasPendingRequest = await _repository.HasDemandeEncours(demandeDto.RibCompte);
-            if (hasPendingRequest)
-            {
-                return BadRequest("Une demande de chéquier est déjà en cours de préparation pour ce compte.");
-            }
-            // Vérifier si le compte est de type épargne
-            bool isEpargne = await _repository.IsCompteEpargne(demandeDto.RibCompte);
-            if (isEpargne)
-            {
-                return BadRequest("Les comptes de type épargne ne peuvent pas faire de demande de chéquier.");
-            }
-
-
-            // Vérifier si le compte a déjà un chéquier actif
-            bool hasActiveChequier = await _repository.HasActiveChequier(demandeDto.RibCompte);
-            if (hasActiveChequier)
-            {
-                return BadRequest("Le compte a déjà un chéquier actif, vous ne pouvez pas soumettre une nouvelle demande.");
-            }
-
-            if (demandeDto.PlafondChequier > 30000)
-            {
-                return BadRequest("Le plafond du chéquier ne peut pas dépasser 30 000 dinars.");
-            }
-
-
-            if (string.IsNullOrWhiteSpace(demandeDto.RaisonDemande))
-            {
-                return BadRequest("La raison de la demande doit être renseignée pour un chéquier non barré.");
-            }
 
             if ((bool)!demandeDto.AccepteEngagement)
-            {
                 return BadRequest("Vous devez accepter l'engagement pour continuer.");
-            }
 
-            // Vérification de l'OTP (authentification renforcée)
-            /*var otpValide = await _otpService.VerifierOtp(demandeDto.Otp);
-            if (!otpValide)
-            {
-                return BadRequest("Le code OTP est invalide.");
-            }*/
+            bool hasPendingRequest = await _repository.HasDemandeEncours(demandeDto.RibCompte);
+            if (hasPendingRequest)
+                return BadRequest(new
+                {
+                    message = "Une demande de chéquier est déjà en cours pour ce compte."
+                });
+           
+            // Récupération du compte via HTTP 
+            var response = await _httpClient.GetAsync($"http://localhost:5185/api/compte/GetByRIB/{demandeDto.RibCompte}");
+            if (!response.IsSuccessStatusCode)
+                return NotFound(new
+                {
+                    message = "Compte introuvable via le service Compte."
+                });
+
+            var content = await response.Content.ReadAsStringAsync();
+            var comptes = JsonConvert.DeserializeObject<List<Compte>>(content);
+            var compte = comptes.FirstOrDefault();
+
+            if (compte == null)
+                return NotFound("Compte non trouvé.");
+
+            if (compte.Type.ToLower().Contains("epargne"))
+                return BadRequest(new
+                {
+                    message = "Les comptes de type épargne ne peuvent pas faire de demande de chéquier."
+                });
+
+            bool hasActiveChequier = await _repository.HasActiveChequier(demandeDto.RibCompte);
+            if (hasActiveChequier)
+                return BadRequest(new
+                {
+                    message = "Le compte a déjà un chéquier actif."
+                });
+
+            if (demandeDto.PlafondChequier > 30000)
+                return BadRequest(new
+                {
+                    message = "Le plafond du chéquier ne peut pas dépasser 30 000 dinars."
+                });
+
             int totalFeuillesEmises = await _repository.CountFeuillesByRib(demandeDto.RibCompte);
 
-            // Créer une nouvelle demande de chéquier non barré
+            // Calcul des frais
+            decimal fraisChequier = 6.000m;
+            decimal fraisEnvoi = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
+            decimal totalFrais = fraisChequier + fraisEnvoi;
+
+            if (compte.Solde < totalFrais)
+                return BadRequest(new
+                {
+                    message = "Solde insuffisant pour couvrir les frais."
+                });
+
+            // Débit du compte via HTTP
+            var debitResponse = await _httpClient.PutAsync(
+                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{totalFrais.ToString("F3").Replace(",", ".")}",
+                null);
+
+            if (!debitResponse.IsSuccessStatusCode)
+                return StatusCode((int)debitResponse.StatusCode, "Échec du débit via le service Compte.");
+
+            // Création de la demande
             var demande = new DemandeChequier
             {
                 RibCompte = demandeDto.RibCompte,
                 NombreFeuilles = demandeDto.NombreFeuilles,
                 Otp = demandeDto.Otp,
-                //Agence = demandeDto.Agence,
                 Email = demandeDto.Email,
                 NumTel = demandeDto.NumTel,
                 PlafondChequier = demandeDto.PlafondChequier,
-                RaisonDemande = demandeDto.RaisonDemande, // Raison de la demande
+                RaisonDemande = demandeDto.RaisonDemande,
                 Status = DemandeStatus.EnCoursPreparation,
                 DateDemande = DateTime.Now,
-                isBarre = false // Chéquier non barré
+                isBarre = false,
+                ModeLivraison = demandeDto.ModeLivraison,
+                AdresseComplete = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? demandeDto.AdresseComplete : null,
+                CodePostal = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? demandeDto.CodePostal : null
             };
 
-            // Calcul des plafonds par feuille
+            // Feuilles
             decimal plafondFeuille = Math.Round(demandeDto.PlafondChequier / demandeDto.NombreFeuilles, 2);
             decimal correction = demandeDto.PlafondChequier - (plafondFeuille * demandeDto.NombreFeuilles);
 
             for (int i = 0; i < demandeDto.NombreFeuilles; i++)
             {
                 decimal montantFeuille = plafondFeuille;
-                if (i == demandeDto.NombreFeuilles - 1) // Ajustement pour éviter des erreurs d’arrondi
-                {
+                if (i == demandeDto.NombreFeuilles - 1)
                     montantFeuille += correction;
-                }
+
                 int numFeuille = totalFeuillesEmises + i + 1;
                 string numeroFeuille = numFeuille.ToString("D7") + demandeDto.RibCompte;
 
@@ -328,32 +582,47 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 });
             }
 
-
-
             await _repository.AddAsync(demande);
-            //await _context.DemandesChequiers.AddAsync(demande);
-
-            // Sauvegarder dans la base de données
-            //await _context.SaveChangesAsync();
             await _repository.SaveAsync();
 
-            // Envoi d'un e-mail de confirmation
-            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier reçue",
-                $"Votre demande de chéquier a bien été enregistrée et est en cours de traitement.");
-
-            // Retourner une réponse après l'ajout des feuilles et l'envoi de l'email
-            return Ok(new { message = "Demande de chéquier soumise avec succès.", demandeId = demande.IdDemande });
-
-
-
-            
-
-            // Générer un fichier PDF de confirmation pour téléchargement (futur)
-            /*var pdfConfirmation = await _pdfService.GenererConfirmationPdf(demande);
-            await _emailService.EnvoyerPdfParEmail(demande.Email, pdfConfirmation);*/
-
-            
+            // Enregistrement des frais
+            var fraisList = new List<FraisChequier>
+    {
+        new FraisChequier
+        {
+            type = "Frais chéquier non barré",
+            Date = DateTime.UtcNow,
+            Montant = fraisChequier,
+            IdDemande = demande.IdDemande
         }
+    };
+
+            if (demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande)
+            {
+                fraisList.Add(new FraisChequier
+                {
+                    type = "Frais envoi recommandé",
+                    Date = DateTime.UtcNow,
+                    Montant = fraisEnvoi,
+                    IdDemande = demande.IdDemande
+                });
+            }
+
+            foreach (var frais in fraisList)
+            {
+                await _fraisRepository.AddAsync(frais);
+            }
+            await _fraisRepository.SaveAsync();
+
+
+            // Email de confirmation
+            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
+                $"Votre demande a bien été enregistrée et est en cours de traitement.");
+
+            return Ok(new { message = "Demande de chéquier non barré soumise avec succès.", demandeId = demande.IdDemande });
+
+        }
+
 
         [HttpGet("by-rib")]
         public async Task<IActionResult> GetDemandesByRib(string rib)
@@ -361,7 +630,12 @@ namespace STBEverywhere_back_APIChequier.Controllers
             var demandes = await _DemandesChequiersRepository.GetDemandesByRibComptes(new List<string> { rib });
             return Ok(demandes);
         }
-
+       /* [HttpGet("by-demande")]
+        public async Task<IActionResult> GetCompteByDemandes(int idDemande)
+        {
+            var demandes = await _DemandesChequiersRepository.GetDemandesByRibComptes(new List<string> { idDemande });
+            return Ok(demandes);
+        }*/
 
         [HttpGet("ListeDemandesParClient")]
         [Authorize]

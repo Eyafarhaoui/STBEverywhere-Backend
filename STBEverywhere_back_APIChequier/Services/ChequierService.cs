@@ -28,46 +28,95 @@ namespace STBEverywhere_back_APIChequier.Services
 
         }
 
-    
-        public async Task VérifierChéquiersDisponibles()
-        {
-            /*var chequiers = await _context.DemandesChequiers
-               
-                .Where(c => c.Status == DemandeStatus.DisponibleEnAgence)
-                .ToListAsync();*/
-            var chequiers = await _chequierRepository.GetChequiersDisponiblesAsync() ?? new List<DemandeChequier>();
 
-            //var chequiers = await _chequierRepository.GetChequiersDisponiblesAsync();
+
+
+        public async Task VérifierChéquiersExpedieAsync()
+        {
+            var chequiers = await _chequierRepository.GetChequiersExpedieAsync() ?? new List<DemandeChequier>();
+
             foreach (var chequier in chequiers)
             {
-                //chequier.DateLivraison = DateTime.Now;
-                //chequier.Status = ChequierStatus.Active;
-
-                // Sauvegarder les changements dans la base de données
-                //await _context.SaveChangesAsync();
-
-                // Envoi d'un email au client
-                /*await _emailService.SendEmailAsync(chequier.Email, "Votre chéquier est disponible",
-                    "Votre chéquier est prêt à être récupéré en agence.");*/
-                /*await _emailService.LogEmailAsync(chequier.Email, "Votre chéquier est disponible",
-    "Votre chéquier est prêt à être récupéré en agence.",chequier.IdDemande);*/
-                /*var existingEmailLog = await _context.EmailLogs
-    .Where(e => e.DemandeId == chequier.IdDemande && e.IsEnvoye && e.EmailType== "disponibile en agence")
-    .FirstOrDefaultAsync();*/
-                var existingEmailLog = await _emailLogRepository.GetExistingEmailLogAsync(chequier.IdDemande,"disponibile en agence");
+                var existingEmailLog = await _emailLogRepository.GetExistingEmailLogAsync(chequier.IdDemande, "expedie");
 
                 if (existingEmailLog == null) // Pas encore envoyé
                 {
-                    await _emailService.LogEmailAsync(chequier.Email, "Votre chéquier est disponible",
-                        "Votre chéquier est prêt à être récupéré en agence.", chequier.IdDemande, "disponibile en agence");
+                    var sujet = "Acheminement de votre chéquier – Confirmation d’expédition";
+                    var contenu = @"Madame, Monsieur,
+
+Nous avons le plaisir de vous informer que votre chéquier a été  a été envoyé par courrier recommandé. Celui-ci est actuellement en cours d’expédition à l’adresse postale communiquée lors de la saisie de votre demande.
+
+Nous vous invitons à vous assurer de la disponibilité de cette adresse pour la bonne réception de votre chéquier. En cas de non-réception dans un délai raisonnable, nous vous prions de bien vouloir contacter votre agence.
+
+Nous vous remercions pour la confiance que vous accordez à notre établissement.
+
+Cordialement,
+STB – Département de la Gestion des Moyens de Paiement";
+
+                    await _emailService.LogEmailAsync(chequier.Email, sujet, contenu, chequier.IdDemande, "expedie");
                 }
 
-                _logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.NumeroChequier, chequier.Email);
+                //_logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.NumeroChequier, chequier.Email);
+                _logger.LogInformation("Envoi de notification à l'email {Email}.", chequier.Email);
 
                 // Envoyer une notification en temps réel avec SignalR
                 await _hubContext.Clients.User(chequier.Email)
-                    .SendAsync("ReceiveNotification", "Votre chéquier est disponible en agence.");
+                    .SendAsync("ReceiveNotification", "Votre chéquier a été expédié et est en cours de livraison.");
             }
         }
-    }
+
+
+
+
+
+        public async Task VérifierChequiersDisponibleEnAgenceAsync()
+        {
+            var demandesDispo = await _context.DemandesChequiers
+                .Where(d => d.Status == DemandeStatus.DisponibleEnAgence && d.ModeLivraison == ModeLivraison.LivraisonAgence)
+                .ToListAsync();
+
+            foreach (var demande in demandesDispo)
+            {
+                var existingChequier = await _context.Chequiers
+                    .FirstOrDefaultAsync(c => c.DemandeChequierId == demande.IdDemande);
+
+                if (existingChequier == null)
+                {
+                    var chequier = new Chequier
+                    {
+                        DemandeChequierId = demande.IdDemande,
+                        Status = ChequierStatus.Actif,
+                        DateLivraison = DateTime.Now,
+                    };
+
+                    _context.Chequiers.Add(chequier);
+                    await _context.SaveChangesAsync();
+
+                    var existingEmailLog = await _context.EmailLogs
+                        .FirstOrDefaultAsync(e =>
+                            e.DemandeId == chequier.DemandeChequierId &&
+                            e.IsEnvoye &&
+                            e.EmailType == "cheque dispo");
+
+                    if (existingEmailLog == null)
+                    {
+                        var contenu = $"Nous vous informons que votre demande de chéquier a été traitée avec succès et que votre chéquier est désormais disponible dans l'agence . Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.\r\n\r\nSi vous avez des questions, n'hésitez pas à nous contacter.\r\nCordialement,\r\nSTB";
+
+                        await _emailService.LogEmailAsync(demande.Email, "Votre chéquier est disponile en Agence ", contenu, demande.IdDemande, "cheque dispo");
+                    }
+
+                    _logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.Id, demande.Email);
+
+                    await _hubContext.Clients.User(demande.Email)
+                        .SendAsync("ReceiveNotification", $"Votre chéquier est livré. Le numéro de votre chéquier");
+                }
+                else
+                {
+                    _logger.LogInformation("Le chéquier pour la demande {DemandeId} existe déjà. Aucun ajout effectué.", demande.IdDemande);
+                }
+            }
+        }
+    
+
+}
     }

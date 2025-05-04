@@ -18,7 +18,7 @@ namespace STBEverywhere_back_APIChequier.Repository.IRepositoy
         Task<bool> IsCompteEpargne(string ribCompte);
         Task<bool> HasActiveChequier(string ribCompte);
 
-        Task<DemandeChequier> GetDemandeByNumeroChequier(string numeroChequier);
+        Task<DemandeChequier> GetDemandeByChequier(int idDemande);
         Task<IEnumerable<FeuilleChequier>> GetFeuillesByDemandeId(int demandeId);
     }
 }

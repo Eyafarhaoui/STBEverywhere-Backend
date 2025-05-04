@@ -38,6 +38,76 @@ namespace STBEverywhere_back_APIAgent.Controllers
 
         }
 
+        [HttpGet("statistiques-reclamations")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetStatistiquesReclamations()
+        {
+            try
+            {
+                var userId = GetUserIdFromToken();
+                var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+
+                if (agent == null || string.IsNullOrEmpty(agent.AgenceId))
+                {
+                    return BadRequest("Agent introuvable ou agence non définie.");
+                }
+
+            // Récupération des réclamations de l’agence
+          
+
+                var apiUrl = $"http://localhost:5260/api/Reclamation/reclamations-par-agence/{agent.AgenceId}";
+                _logger.LogInformation("Appel de l'API : {ApiUrl}", apiUrl);
+
+                var response = await _httpClient.GetAsync(apiUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return StatusCode((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+                }
+
+                var reclamations = await response.Content.ReadFromJsonAsync<List<Reclamation>>();
+                _logger.LogInformation("Reclamations reçues: {Count}", reclamations?.Count);
+                _logger.LogInformation("Première reclamation: {@Reclamation}", reclamations?.FirstOrDefault());
+                if (reclamations == null)
+                {
+                    return StatusCode(500, "Erreur lors de la désérialisation des données.");
+                }
+
+                var today = DateTime.Today;
+
+                var enCours = reclamations
+                    .Where(r => r.Statut == ReclamationStatut.EnCours)
+                    .ToList();
+
+                var traitees = reclamations
+                    .Where(r =>
+                        r.Statut == ReclamationStatut.traite &&
+                        r.IdAgent == agent.Id &&
+                        r.DateResolution.HasValue &&
+                        r.DateResolution.Value.Date == today
+                    ).ToList();
+
+                int nbEnCours = enCours.Count;
+                _logger.LogInformation("Reclamations en cours", nbEnCours);
+                int nbTraitees = traitees.Count;
+                _logger.LogInformation("Reclamations en cours", nbEnCours);
+                int total = nbEnCours + nbTraitees;
+
+                return Ok(new
+                {
+                    Total = total,
+                    EnCours = nbEnCours,
+                    Traitees = nbTraitees
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la récupération des statistiques des réclamations.");
+                return StatusCode(500, "Erreur interne du serveur.");
+            }
+        }
 
 
 
@@ -96,6 +166,7 @@ namespace STBEverywhere_back_APIAgent.Controllers
 
                 var response = await _httpClient.GetAsync(apiUrl);
 
+                
                 if (!response.IsSuccessStatusCode)
                 {
                     return StatusCode((int)response.StatusCode, await response.Content.ReadAsStringAsync());
@@ -104,12 +175,15 @@ namespace STBEverywhere_back_APIAgent.Controllers
                 // Désérialiser directement en List<Reclamation>
                 var reclamations = await response.Content.ReadFromJsonAsync<List<Reclamation>>();
 
-                if (reclamations == null || !reclamations.Any())
+              
+                var reclamationsEnAttente = reclamations?.Where(r => r.Statut == ReclamationStatut.EnCours ).ToList();
+
+                if (reclamationsEnAttente == null || !reclamationsEnAttente.Any())
                 {
                     return NotFound("Aucune demande en attente trouvée pour votre agence.");
                 }
 
-                return Ok(reclamations);
+                return Ok(reclamationsEnAttente);
             }
             catch (Exception ex)
             {

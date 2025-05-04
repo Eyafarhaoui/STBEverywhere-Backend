@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using SharpCompress.Common;
 using STBEverywhere_Back_SharedModels.Models;
 using STBEverywhere_Back_SharedModels.Models.enums;
 
@@ -24,6 +25,7 @@ namespace STBEverywhere_Back_SharedModels.Data
         public DbSet<DemandeChequier> DemandesChequiers { get; set; }
         public DbSet<Chequier> Chequiers { get; set; }
         public DbSet<FeuilleChequier> FeuillesChequiers { get; set; }
+        public DbSet<FraisChequier> FraisChequiers { get; set; }
         public DbSet<EmailLog> EmailLogs { get; set; }
         public DbSet<Beneficiaire> Beneficiaires { get; set; }
 
@@ -39,6 +41,8 @@ namespace STBEverywhere_Back_SharedModels.Data
         public DbSet<Reclamation> Reclamations { get; set; }
         public DbSet<NotificationPack> NotificationsPack { get; set; }
         public DbSet<NotificationReclamation> NotificationsReclamation { get; set; }
+        public DbSet<HistoriqueSolde> HistoriquesSoldes { get; set; }
+        public DbSet<Convention> Conventions { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -70,6 +74,9 @@ namespace STBEverywhere_Back_SharedModels.Data
            .HasOne(r => r.Client)
            .WithMany(c => c.Reclamations)
            .HasForeignKey(r => r.ClientId);
+            modelBuilder.Entity<Reclamation>() // convertir enum en string 
+              .Property(r => r.Statut)
+              .HasConversion<string>();
 
             modelBuilder.Entity<NotificationPack>(entity =>
             {
@@ -157,10 +164,10 @@ namespace STBEverywhere_Back_SharedModels.Data
 
 
                 entity.HasData(
-                        new Agent { Id = 1, Nom = "Admin", Prenom = "STB", Departement = "Administration", UserId = 3, AgenceId = "67f83774f6176b4e97078b05" }
+                        new Agent { Id = 1, Nom = "Admin", Prenom = "STB", Departement = "Administration", UserId = 3, AgenceId = "6801861dfe110f2e59031111" }
                     );
                 entity.HasData(
-                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5 ,AgenceId = "67f83774f6176b4e97078b06" }
+                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5 ,AgenceId = "6801861dfe110f2e59031112" }
                    );
             });
 
@@ -218,7 +225,8 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PaysNaissance = "USA",
                         NomMere = "Jane Doe",
                         NomPere = "John Doe Sr.", 
-                        AgenceId= "67f83774f6176b4e97078b05",
+                        AgenceId= "6801861dfe110f2e59031111", 
+                        id_convention=1,
                         UserId = 1
                     },
                     new Client
@@ -248,7 +256,8 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PaysNaissance = "Canada",
                         NomMere = "Mary Smith",
                         NomPere = "Robert Smith",
-                        AgenceId = "67f83774f6176b4e97078b06",
+                        AgenceId = "6801861dfe110f2e59031112",
+                        id_convention=2,
                         UserId = 2
                     },
                     new Client
@@ -278,7 +287,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PaysNaissance = "Canada",
                         NomMere = "Mary Smith",
                         NomPere = "Robert Smith",
-                        AgenceId = "67f6461d3d6e3c7fa3ef47ae",
+                        AgenceId = "6801861dfe110f2e59031111",
                         UserId = 4
                     }
                 );
@@ -296,13 +305,14 @@ namespace STBEverywhere_Back_SharedModels.Data
                 entity.HasData(
                     new Compte
                     {
-                        RIB = "12345678923537902652",
+                        RIB = "10000001121041340847",
                         NumCin = "14668061",
                         Type = "Courant",
                         Solde = 1000.50m,
                         DateCreation = new DateTime(2024, 5, 1),
                         Statut = "Actif",
-                        IBAN = "TN2110500678923537952",
+                        IBAN = "TN7410000001121041347",
+                        DecouvertAutorise=0,
                         ClientId = 1
                     },
                     new Compte
@@ -313,7 +323,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         Solde = 5000.00m,
                         DateCreation = new DateTime(2025, 1, 1),
                         Statut = "Actif",
-                        IBAN = "TN1210500110223463745",
+                        IBAN = "TN7410000001121041347",
                         ClientId = 2
                     }
                 );
@@ -349,7 +359,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PlafondDAP = 20000,
                         Solde = 1000.50m,
                         CodePIN = "",
-                        RIB = "12345678923537902652"
+                        RIB = "10000001121041340847"
                     },
                     new Carte
                     {
@@ -387,7 +397,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                     new DemandeCarte
                     {
                         Iddemande = 1,
-                        NumCompte = "12345678923537902652",
+                        NumCompte = "10000001121041340847",
                         NomCarte = NomCarte.VisaClassic,
                         TypeCarte = TypeCarte.International,
                         CIN = "14668061",
@@ -416,9 +426,43 @@ namespace STBEverywhere_Back_SharedModels.Data
                     }
                 );
             });
+            modelBuilder.Entity<Convention>(entity =>
+            {
+                entity.HasKey(c => c.id_convention); // Clé primaire
 
-            // Configuration de l'entité Virement
-            modelBuilder.Entity<Virement>(entity =>
+                entity.Property(c => c.nom_convention)
+                      .IsRequired()
+                      .HasMaxLength(100); // Taille max, tu peux ajuster
+
+                entity.Property(c => c.marge_bancaire)
+                      .IsRequired()
+                      .HasColumnType("decimal(5,2)"); // Format 99.99 (exemple : 1.50, 2.00)
+
+                // Seed data
+                entity.HasData(
+                    new Convention
+                    {
+                        id_convention = 1,
+                        nom_convention = "CNSS",
+                        marge_bancaire = 1.5m  
+                    },
+                    new Convention
+                    {
+                        id_convention = 2,
+                        nom_convention = "CNRPS",
+                        marge_bancaire = 2.0m  
+                    },
+
+                     new Convention
+                     {
+                         id_convention = 3,
+                         nom_convention = "CNAM",
+                         marge_bancaire = 3.0m
+                     }
+                );
+            });
+                // Configuration de l'entité Virement
+                modelBuilder.Entity<Virement>(entity =>
             {
                 entity.HasKey(v => v.Id);
                 entity.HasIndex(v => new { v.RIB_Emetteur, v.DateVirement }).IsUnique();

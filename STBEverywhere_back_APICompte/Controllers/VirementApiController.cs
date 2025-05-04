@@ -131,7 +131,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             decimal frais = 0.5m;
             decimal montantTotal = virementDto.Montant + (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? frais : 0);
 
-            // ⚠️ Vérification du solde disponible (incluant le découvert)
+            // Vérification du solde disponible (incluant le découvert)
             if (emetteur.SoldeDisponible < montantTotal)
             {
                 return BadRequest(new { message = "Solde insuffisant, y compris avec le découvert autorisé." });
@@ -140,16 +140,16 @@ namespace STBEverywhere_back_APICompte.Controllers
             await _dbVirement.BeginTransactionAsync();
             try
             {
-                // 📉 Débit du compte émetteur
+                // Débit du compte émetteur
                 emetteur.Solde -= montantTotal;
 
-                // ⚠️ Mise à jour du découvert autorisé si nécessaire
+                //  Mise à jour du découvert autorisé si nécessaire
                 if (emetteur.Solde < 0)
                 {
                     emetteur.DecouvertAutorise += emetteur.Solde; // Réduit le découvert autorisé de la partie négative
                 }
 
-                // 📈 Crédit du compte récepteur
+                // Crédit du compte récepteur
                 recepteur.Solde += virementDto.Montant;
 
                 await _dbCompte.UpdateAsync(emetteur);
@@ -176,7 +176,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                         RIB = virementDto.RIB_Emetteur,
                         IdsVirements = new List<int> { virement.Id },
                         Montant = frais,
-                        type = "Virement émis",
+                        type = "TVA sur commision virement émis",
                         Date = DateTime.Now
                     };
 
@@ -185,7 +185,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                         RIB = recepteur.RIB,
                         IdsVirements = new List<int> { virement.Id },
                         Montant = frais,
-                        type = "Virement reçu",
+                        type = "TVA sur commision virement reçu",
                         Date = DateTime.Now
                     };
 
@@ -616,7 +616,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 var fraisCompte = new FraisCompte
                 {
                     RIB = dto.RibEmetteur,
-                    type = "Virement multiple",
+                    type = "TVA sur commision Virement multiple",
                     Date = DateTime.Now,
                     Montant = frais,
                     IdsVirements = idsVirements // Utilisation de la propriété NotMapped
@@ -1055,7 +1055,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 var fraisCompte = new FraisCompte
                 {
                     RIB = ribEmetteur,
-                    type = "Virement multiple",
+                    type = "TVA sur commision Virement multiple",
                     Date = DateTime.Now,
                     Montant = frais,
                     IdsVirements = idsVirements

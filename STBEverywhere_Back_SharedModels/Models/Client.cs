@@ -67,7 +67,16 @@ namespace STBEverywhere_Back_SharedModels
         [ForeignKey("UserId")]
         public virtual User User { get; set; }
         public DateTime? ResetPasswordTokenExpiry { get; set; }
-        // Relation One-to-Many : Un client peut avoir plusieurs comptes
+
+
+
+        public int? id_convention { get; set; }
+
+        [ForeignKey("id_convention")]
+        public  Convention Convention { get; set; }
+
+
+
         [JsonIgnore]
         public ICollection<Compte> Comptes { get; set; } = new List<Compte>();
         [JsonIgnore]

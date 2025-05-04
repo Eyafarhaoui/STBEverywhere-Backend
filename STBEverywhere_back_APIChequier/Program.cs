@@ -15,7 +15,6 @@ using STBEverywhere_ApiAuth.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Ajouter SignalR
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
 
@@ -23,7 +22,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
   options.UseMySql(
       builder.Configuration.GetConnectionString("DefaultConnection"),
-      ServerVersion.Parse("8.0.0-mysql") // Mets la version exacte de MySQL ici
+      ServerVersion.Parse("8.0.0-mysql") 
   ));
 
 // Enregistrement des services
@@ -32,13 +31,13 @@ builder.Services.AddScoped<ChequierService>();
 builder.Services.AddScoped<IDemandesChequiersRepository, DemandesChequiersRepository>();
 builder.Services.AddScoped<IEmailLogRepository, EmailLogRepository>();
 builder.Services.AddScoped<IChequierRepository, ChequierRepository>();
+builder.Services.AddScoped<IFraisChequierRepository,FraisChequierRepository>();
 builder.Services.AddScoped<DemandeChequierService>();
+builder.Services.AddHostedService<ChequierExpedieJob>();
 
-//builder.Services.AddHostedService<ChequierJob>();
+
 builder.Services.AddHostedService<EmailJob>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddHostedService<ChequierJob>();
-builder.Services.AddHostedService<ChequierEnvoiRecommandeJob>();
 builder.Services.AddHostedService<ChequierDisponibleEnAgenceJob>();
 
 
@@ -118,17 +117,16 @@ builder.Services.AddControllers()
 
 
 
-var app = builder.Build(); // Ici, les services deviennent en lecture seule !
+var app = builder.Build(); 
 
-// Appliquer les migrations automatiquement (optionnel)
+
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var context = services.GetRequiredService<ApplicationDbContext>();
-    //context.Database.Migrate(); // Décommentez pour appliquer les migrations automatiquement
+   
 }
 
-// Configurer le pipeline HTTP
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -138,12 +136,11 @@ app.UseHttpsRedirection();
 app.UseRouting();
 
 app.UseAuthentication();
-app.UseCors("CorsPolicy"); //Utilisation de CORS après `builder.Build()`
+app.UseCors("CorsPolicy"); 
 
-//app.UseHttpsRedirection();
+
 app.UseAuthorization();
 
 app.MapControllers();
-//app.MapHub<NotificationHub>("/hubs/notificationHub");
 
 app.Run();

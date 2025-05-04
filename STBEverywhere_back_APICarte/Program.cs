@@ -10,10 +10,11 @@ using STBEverywhere_back_APICarte.Repository;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json;
 using STBEverywhere_ApiAuth.Repositories;
- // Pour ICompteService
+// Pour ICompteService
 using STBEverywhere_back_APICarte.Services;
 using STBEverywhere_back_APICompte.Repository.IRepository;
 using STBEverywhere_back_APICompte.Repository;
+using STBEverywhere_back_APICompte.Services.IServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,8 +29,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Enregistrement des repositories
 // Enregistrement sans ambiguïté
-builder.Services.AddScoped<STBEverywhere_back_APICompte.Services.ICompteService,STBEverywhere_back_APICompte.Services.CompteService>();
+builder.Services.AddScoped<ICompteService,STBEverywhere_back_APICompte.Services.CompteService>();
 builder.Services.AddScoped<ICompteRepository, CompteRepository>();
+builder.Services.AddScoped<IVirementRepository, VirementRepository>();
+
 builder.Services.AddScoped<ICarteRepository, CarteRepository>();
 builder.Services.AddScoped<STBEverywhere_back_APICarte.Services.EmailService>();
 builder.Services.AddHttpClient();

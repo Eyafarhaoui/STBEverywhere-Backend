@@ -34,7 +34,6 @@ namespace STBEverywhere_back_APIAgent.Service
             reclamation.IdAgent = idAgent;
             reclamation.DateResolution = DateTime.UtcNow;
             reclamation.Statut = ReclamationStatut.traite;
-
             // Envoyer une notification
             await _notificationService.NotifyPackStatusChange(
                 reclamation.ClientId,

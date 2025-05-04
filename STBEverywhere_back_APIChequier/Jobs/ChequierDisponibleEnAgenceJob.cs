@@ -21,7 +21,31 @@ namespace STBEverywhere_back_APIChequier.Jobs
             ;
         }
 
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    using (var scope = _serviceProvider.CreateScope())
+                    {
+                        var ChequierService = scope.ServiceProvider.GetRequiredService<ChequierService>();
+
+                        await ChequierService.VérifierChequiersDisponibleEnAgenceAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erreur lors de la vérification des demandes de chéquiers disponibles en agences.");
+                }
+
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            }
+        }
+
+
+        /*protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -34,7 +58,7 @@ namespace STBEverywhere_back_APIChequier.Jobs
 
                         // Récupérer les demandes dont le statut est 'livré'
                         var demandesDispo = await context.DemandesChequiers
-                            .Where(d => d.Status == DemandeStatus.DisponibleEnAgence && d.ModeLivraison == ModeLivraison.LivraisonAgence) // Le statut doit être 'Livré'
+                            .Where(d => d.Status == DemandeStatus.DisponibleEnAgence && d.ModeLivraison == ModeLivraison.LivraisonAgence) 
                             .ToListAsync();
 
                         foreach (var demande in demandesDispo) // Ajout de la boucle foreach
@@ -57,15 +81,15 @@ namespace STBEverywhere_back_APIChequier.Jobs
                                 await context.SaveChangesAsync();
 
                                 var existingEmailLog = await context.EmailLogs
-                                    .Where(e => e.DemandeId == chequier.DemandeChequierId && e.IsEnvoye && e.EmailType == "cheque livre")
+                                    .Where(e => e.DemandeId == chequier.DemandeChequierId && e.IsEnvoye && e.EmailType == "cheque dispo")
                                     .FirstOrDefaultAsync();
 
                                 if (existingEmailLog == null) // Si l'email n'a pas encore été envoyé
                                 {
                                     //var contenu = $"Nous vous informons que votre demande de chéquier a été traitée avec succès et que votre chéquier {demande.NumeroChequier} est désormais disponible dans l'agence {demande.Agence}. Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.\r\n\r\nSi vous avez des questions, n'hésitez pas à nous contacter.\r\nCordialement,\r\nSTB";
-                                    var contenu = $"Nous vous informons que votre demande de chéquier a été traitée avec succès et que votre chéquier {demande.NumeroChequier} est désormais disponible dans l'agence xxx. Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.\r\n\r\nSi vous avez des questions, n'hésitez pas à nous contacter.\r\nCordialement,\r\nSTB";
+                                    var contenu = $"Nous vous informons que votre demande de chéquier a été traitée avec succès et que votre chéquier {demande.NumeroChequier} est désormais disponible dans l'agence . Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.\r\n\r\nSi vous avez des questions, n'hésitez pas à nous contacter.\r\nCordialement,\r\nSTB";
 
-                                    await emailService.LogEmailAsync(demande.Email, "Votre chéquier est livré", contenu, demande.IdDemande, "cheque livre");
+                                    await emailService.LogEmailAsync(demande.Email, "Votre chéquier est disponile en Agence ", contenu, demande.IdDemande, "cheque dispo");
                                 }
 
                                 _logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.Id, demande.Email);
@@ -80,12 +104,12 @@ namespace STBEverywhere_back_APIChequier.Jobs
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Erreur lors de la vérification des demandes de chéquiers livrés.");
+                    _logger.LogError(ex, "Erreur lors de la vérification des demandes de chéquiers disponibles en agences.");
                 }
 
                 // Vérifier toutes les minutes (ou ajuster la fréquence selon votre besoin)
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
-        }
+        }*/
     }
-    }
+}

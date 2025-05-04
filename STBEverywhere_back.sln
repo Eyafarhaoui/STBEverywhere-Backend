@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STBEverywhere_back_APIAgent
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STBEverywhere_ApiAgence", "STBEverywhere_ApiAgence\STBEverywhere_ApiAgence.csproj", "{560CF208-90B0-4BFF-AF05-1FCF602AA2FB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestSprint4", "TestSprint4\TestSprint4.csproj", "{07B105F9-C967-4583-B88A-9F1C9D33AA0F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,6 +65,10 @@ Global
 		{560CF208-90B0-4BFF-AF05-1FCF602AA2FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{560CF208-90B0-4BFF-AF05-1FCF602AA2FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{560CF208-90B0-4BFF-AF05-1FCF602AA2FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{07B105F9-C967-4583-B88A-9F1C9D33AA0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07B105F9-C967-4583-B88A-9F1C9D33AA0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07B105F9-C967-4583-B88A-9F1C9D33AA0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07B105F9-C967-4583-B88A-9F1C9D33AA0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

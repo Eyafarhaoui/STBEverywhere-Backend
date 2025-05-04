@@ -1,4 +1,5 @@
 ﻿using STBEverywhere_Back_SharedModels;
+using STBEverywhere_Back_SharedModels.Models;
 using STBEverywhere_Back_SharedModels.Models.DTO;
 
 
@@ -13,6 +14,8 @@ namespace STBEverywhere_back_APIClient.Services
         Task<string> RegisterAsync(RegisterDto registerDto);
         Task<bool> UploadProfileImageAsync(int clientId, string fileName);
         Task<bool> RemoveProfileImageAsync(int clientId);
+        Task<Convention?> GetConventionByIdAsync(int id);
+
 
     }
 }
