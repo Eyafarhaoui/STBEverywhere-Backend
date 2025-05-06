@@ -235,6 +235,7 @@ namespace STBEverywhere_back_APICarte.Services
             return cardNumberBuilder.ToString();
         }
 
+
         private async Task<string> GenerateUniquePinAsync()
         {
             string pin;

@@ -12,6 +12,8 @@ namespace STBEverywhere_Back_SharedModels.Models.DTO
     
         public decimal Montant { get; set; }
         public decimal Frais { get; set; }
-        
+        public bool isDebit { get; set; }
+
+
     }
 }

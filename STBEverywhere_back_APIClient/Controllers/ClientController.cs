@@ -24,7 +24,10 @@ using iTextSharp.text;
 using iTextSharp.text.pdf.draw;
 
 using Microsoft.AspNetCore.Hosting;
+
 using Microsoft.Extensions.Logging;
+
+using Microsoft.AspNetCore.Authorization;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -1746,6 +1749,215 @@ Les documents sont joints à cet email.";
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erreur lors du marquage de la notification comme lue");
+                return StatusCode(500, "Erreur interne du serveur");
+            }
+        }
+
+        [HttpPost("submit-modification-request")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> SubmitModificationRequest([FromForm] ModificationRequestDto requestDto)
+        {
+            try
+            {
+                // 1. Vérification de l'utilisateur
+                var userId = GetUserIdFromToken();
+                var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+                if (client == null)
+                {
+                    return NotFound(new { message = "Client non trouvé" });
+                }
+
+                // 2. Validation des champs
+                var validFields = new[] { "adresse", "profession", "situationProfessionnelle", "etatCivil", "residence" };
+                if (!validFields.Contains(requestDto.FieldToModify.ToLower()))
+                {
+                    return BadRequest(new { message = "Champ à modifier non valide" });
+                }
+
+                if (string.IsNullOrEmpty(requestDto.NewValue))
+                {
+                    return BadRequest(new { message = "La nouvelle valeur est requise" });
+                }
+
+                if (requestDto.JustificationFile == null || requestDto.JustificationFile.Length == 0)
+                {
+                    return BadRequest(new { message = "Un fichier justificatif est requis" });
+                }
+
+                // 3. Vérification du type de fichier
+                var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+                var fileExtension = Path.GetExtension(requestDto.JustificationFile.FileName).ToLowerInvariant();
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { message = "Seuls les fichiers PDF, JPG, JPEG et PNG sont autorisés" });
+                }
+
+                // 4. Vérification de la taille du fichier (max 5MB)
+                if (requestDto.JustificationFile.Length > 5 * 1024 * 1024)
+                {
+                    return BadRequest(new { message = "La taille du fichier ne doit pas dépasser 5MB" });
+                }
+
+                // 5. Création du répertoire de stockage si inexistant
+                var uploadsPath = Path.Combine(_environment.WebRootPath, "ModificationRequests");
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                }
+
+                // 6. Génération d'un nom de fichier unique
+                var fileName = $"Modif_{client.Id}_{DateTime.Now:yyyyMMddHHmmss}{fileExtension}";
+                var filePath = Path.Combine(uploadsPath, fileName);
+
+                // 7. Sauvegarde du fichier
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await requestDto.JustificationFile.CopyToAsync(stream);
+                }
+
+                // 8. Création de la demande
+                var request = new ModificationRequest
+                {
+                    ClientId = client.Id,
+                    FieldToModify = requestDto.FieldToModify,
+                    NewValue = requestDto.NewValue,
+                    JustificationPath = fileName,
+                    RequestDate = DateTime.UtcNow,
+                    Status = "EnCours"
+                };
+
+                _context.ModificationRequests.Add(request);
+                await _context.SaveChangesAsync();
+
+                // 9. Notification (optionnelle)
+                //await _notificationService.NotifyNewModificationRequest(request.Id);
+
+                return Ok(new
+                {
+                    message = "Demande soumise avec succès",
+                    requestId = request.Id
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la soumission de la demande");
+                return StatusCode(500, new { message = "Erreur interne du serveur" });
+            }
+        }
+        [HttpGet("pending-modification-requests")]
+       
+        public async Task<IActionResult> GetPendingModificationRequests()
+        {
+            var requests = await _context.ModificationRequests
+                .Include(r => r.Client)
+                .Where(r => r.Status == "EnCours")
+                .OrderBy(r => r.RequestDate)
+                .ToListAsync();
+
+            return Ok(requests);
+        }
+
+        [HttpPost("process-modification-request/{requestId}")]
+        
+        public async Task<IActionResult> ProcessModificationRequest(int requestId, [FromBody] ProcessRequestDto dto)
+        {
+            var request = await _context.ModificationRequests
+                .Include(r => r.Client)
+                .FirstOrDefaultAsync(r => r.Id == requestId);
+
+            if (request == null)
+            {
+                return NotFound("Demande non trouvée");
+            }
+
+            var agentId = GetUserIdFromToken();
+
+            if (dto.Approve)
+            {
+                // Appliquer la modification
+                switch (request.FieldToModify.ToLower())
+                {
+                    case "adresse":
+                        request.Client.Adresse = request.NewValue;
+                        break;
+                    case "profession":
+                        request.Client.Profession = request.NewValue;
+                        break;
+                    case "situationprofessionnelle":
+                        request.Client.SituationProfessionnelle = request.NewValue;
+                        break;
+                    case "etatcivil":
+                        request.Client.EtatCivil = request.NewValue;
+                        break;
+                    case "residence":
+                        request.Client.Residence = request.NewValue;
+                        break;
+                }
+
+                request.Status = "Acceptee";
+            }
+            else
+            {
+                request.Status = "Refusee";
+            }
+
+            request.ProcessedByAgentId = agentId;
+            request.ProcessedDate = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Notifier le client
+            //await _notificationService.NotifyModificationRequestStatus(request.ClientId, request.Id, request.Status);
+
+            return Ok(new { message = $"Demande {request.Status}" });
+        }
+
+
+        [HttpGet("modification-requests/{requestId}/document")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetModificationRequestDocument(int requestId)
+        {
+            try
+            {
+                var request = await _context.ModificationRequests
+                    .Include(r => r.Client)
+                    .FirstOrDefaultAsync(r => r.Id == requestId);
+
+                if (request == null || string.IsNullOrEmpty(request.JustificationPath))
+                {
+                    return NotFound("Document non trouvé");
+                }
+
+                var filePath = Path.Combine(_environment.WebRootPath,
+                                          "ModificationRequests",
+                                          request.JustificationPath);
+
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return NotFound("Fichier introuvable");
+                }
+
+                // Déterminer le type MIME correct
+                var mimeType = "application/pdf"; // Par défaut
+                if (filePath.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+                    mimeType = "image/jpeg";
+                else if (filePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    mimeType = "image/png";
+
+                // Nom du fichier pour le téléchargement
+                var fileName = $"Justificatif_{request.Client?.Nom}_{request.FieldToModify}{Path.GetExtension(filePath)}";
+
+                return PhysicalFile(filePath, mimeType, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur lors de la récupération du document {requestId}");
                 return StatusCode(500, "Erreur interne du serveur");
             }
         }

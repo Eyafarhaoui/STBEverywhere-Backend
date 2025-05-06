@@ -91,7 +91,5 @@ namespace STBEverywhere_Back_SharedModels
         public virtual ICollection<NotificationReclamation> NotificationsReclamation { get; set; } = new List<NotificationReclamation>();
 
 
-        [JsonIgnore]
-        public ICollection<DemandeModificationKYC> DemandeModificationKYC { get; set; } = new List<DemandeModificationKYC>();
     }
 }

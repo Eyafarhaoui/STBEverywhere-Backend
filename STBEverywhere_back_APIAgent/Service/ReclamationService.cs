@@ -48,8 +48,8 @@ namespace STBEverywhere_back_APIAgent.Service
             var email = reclamation.Client?.Email;
             if (string.IsNullOrWhiteSpace(email))
                 return false;
-
-            return await _emailService.SendEmailAsync(email, "Réponse à votre réclamation", contenuReponse);
+            await _emailService.SendEmailAsync(email, "Réponse à votre réclamation", contenuReponse);
+            return true;
         }
     }
 
