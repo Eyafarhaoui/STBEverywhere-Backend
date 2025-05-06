@@ -68,7 +68,7 @@ namespace STBEverywhere_back_APIClient.Services
             return true;
         }
 
-
+     
         public async Task<string> RegisterAsync(RegisterDto registerDto)
         {
             // 1. Vérifier si le RIB est valide et appartient à l'email donné

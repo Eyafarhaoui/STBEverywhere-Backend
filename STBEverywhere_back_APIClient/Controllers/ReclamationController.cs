@@ -68,7 +68,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 _dbContext.Reclamations.Add(reclamation);
                 await _dbContext.SaveChangesAsync();
 
-                var reference = $"REC-{reclamation.Id.ToString().PadLeft(8, '0')}";
+                //var reference = $"REC-{reclamation.Id.ToString().PadLeft(8, '0')}";
 
                 return Ok(new ReclamationResponseDto
                 {
@@ -87,19 +87,18 @@ namespace STBEverywhere_back_APIClient.Controllers
             }
         }
 
-        
+
         [HttpGet("reclamations-par-agence/{agenceId}")]
         public async Task<IActionResult> GetReclamationsParAgence(string agenceId)
         {
             try
             {
                 var reclamations = await _dbContext.Reclamations
-                    .Include(r => r.Client) // Inclure les données du client
-                    .Where(r =>  r.Client.AgenceId == agenceId)
-                    .OrderByDescending(r => r.DateCreation)
+                    .Include(r => r.Client)
+                    .Where(r => r.Client.AgenceId == agenceId)
+                    .OrderBy(r => r.DateCreation) // Modification ici
                     .Select(r => new
                     {
-                        // Tous les champs de la réclamation
                         r.Id,
                         r.Objet,
                         r.Message,
@@ -109,16 +108,11 @@ namespace STBEverywhere_back_APIClient.Controllers
                         r.Statut,
                         DateCreation = r.DateCreation.ToString("yyyy-MM-dd"),
                         DateResolution = r.DateResolution.HasValue ? r.DateResolution.Value.ToString("yyyy-MM-dd") : null,
-
-                        // Informations du client
                         ClientId = r.Client.Id,
                         NomClient = r.Client.Nom + " " + r.Client.Prenom,
                         ClientCIN = r.Client.NumCIN,
                         ClientEmail = r.Client.Email,
-                        ClientTelephone = r.Client.Telephone,
-
-                        // Champ calculé
-                        Reference = $"REC-{r.Id.ToString().PadLeft(8, '0')}"
+                        ClientTelephone = r.Client.Telephone
                     })
                     .ToListAsync();
 
@@ -131,7 +125,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             }
         }
 
-       
+
 
 
 
@@ -153,7 +147,8 @@ namespace STBEverywhere_back_APIClient.Controllers
                         Description = r.Message,
                         r.DateCreation,
                         Statut = r.Statut.ToString(),
-                        Reference = $"REC-{r.Id.ToString().PadLeft(8, '0')}",
+                        dateResolution=r.DateResolution,
+                        //Reference = $"REC-{r.Id.ToString().PadLeft(8, '0')}",
                         Reponse = string.IsNullOrEmpty(r.Reponse) ? null : r.Reponse
                     })
                     .ToListAsync();

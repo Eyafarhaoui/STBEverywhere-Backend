@@ -21,8 +21,9 @@ namespace STBEverywhere_back_APIAgent.Service
         {
             _reclamationRepository = reclamationRepository;
             _notificationService = notificationService;
+            _emailService = emailService;
 
-}
+        }
 
         public async Task<bool> RepondreAReclamationAsync(int reclamationId, string contenuReponse, int idAgent)
         {

@@ -41,6 +41,11 @@
         "Path": "STBEverywhere_back_APIChequier\\STBEverywhere_back_APIChequier.csproj",
         "Action": "Start",
         "DebugTarget": "http"
+      },
+      {
+        "Path": "Chatbot\\Chatbot.csproj",
+        "Action": "Start",
+        "DebugTarget": "http"
       }
     ]
   }
