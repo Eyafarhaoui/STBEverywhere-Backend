@@ -28,6 +28,20 @@ namespace STBEverywhere_Back_SharedModels.Models
         [ForeignKey("NumCarte")]
         [JsonIgnore]
         public Carte Carte { get; set; }
+        [Column("IdsRecharges")]
+        public string IdsRechargesStr { get; set; } = string.Empty;
+
+        // Propriété pratique pour travailler avec une liste
+        [NotMapped]
+        public List<int> IdsRecharges
+        {
+            get => string.IsNullOrEmpty(IdsRechargesStr)
+                ? new List<int>()
+                : IdsRechargesStr.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                .Select(int.Parse)
+                                .ToList();
+            set => IdsRechargesStr = value != null ? string.Join(",", value) : "";
+        }
     }
 
     public enum TypeFraisCarte

@@ -43,6 +43,7 @@ namespace STBEverywhere_Back_SharedModels.Data
         public DbSet<NotificationReclamation> NotificationsReclamation { get; set; }
         public DbSet<HistoriqueSolde> HistoriquesSoldes { get; set; }
         public DbSet<Convention> Conventions { get; set; }
+        public DbSet<ModificationRequest> ModificationRequests { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -103,6 +104,26 @@ namespace STBEverywhere_Back_SharedModels.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
+            modelBuilder.Entity<ModificationRequest>(entity =>
+            {
+                // Relation avec Client
+                entity.HasOne(m => m.Client)
+                      .WithMany() // Si Client n'a pas de collection de ModificationRequests
+                      .HasForeignKey(m => m.ClientId)
+                      .OnDelete(DeleteBehavior.Restrict); // Ou DeleteBehavior.Cascade selon vos besoins
+
+                // Configuration des propriétés
+                entity.Property(m => m.Status)
+                      .HasMaxLength(20)
+                      .HasDefaultValue("Pending");
+
+            
+
+                // Si vous voulez ajouter des index pour améliorer les performances
+                entity.HasIndex(m => m.Status);
+                entity.HasIndex(m => m.ClientId);
+                entity.HasIndex(m => m.RequestDate);
+            });
 
             modelBuilder.Entity<NotificationReclamation>(entity =>
             {

@@ -633,7 +633,6 @@ namespace STBEverywhere_back_APICarte.Controllers
             return Ok(demandes);
         }
 
-
         [HttpPost("effectuer-recharge")]
         public async Task<IActionResult> EffectuerRecharge([FromBody] RechargeCarteDto dto)
         {
@@ -663,65 +662,52 @@ namespace STBEverywhere_back_APICarte.Controllers
                 if (carteEmetteur.Compte.ClientId != clientEmetteur.Id)
                     return Unauthorized("Vous n'êtes pas autorisé à utiliser cette carte");
 
-                // 3. Calcul des frais
+                // 2. Calcul des frais
                 bool memeClient = carteEmetteur.Compte.ClientId == carteRecepteur.Compte.ClientId;
                 decimal frais = memeClient ? 0 : 2.0m;
                 decimal montantTotal = dto.Montant + frais;
 
-                // 4. Vérification du solde
+                // 3. Vérification du solde
                 if ((carteEmetteur.Compte.Solde + carteEmetteur.Compte.DecouvertAutorise) < montantTotal)
                     return BadRequest("Solde insuffisant pour effectuer la recharge");
 
-                // 5. Exécution des opérations avec des requêtes UPDATE directes
-                // Mise à jour du compte émetteur
-                await _dbContext.Comptes
-                    .Where(c => c.RIB == carteEmetteur.Compte.RIB)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(c => c.Solde, c => c.Solde - montantTotal));
-
-                // Mise à jour de la carte émetteur
-                await _dbContext.Cartes
-                    .Where(c => c.NumCarte == dto.CarteEmetteurNum)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(c => c.Solde, c => c.Solde - montantTotal));
-
-                // Mise à jour du compte récepteur
-                await _dbContext.Comptes
-                    .Where(c => c.RIB == carteRecepteur.Compte.RIB)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(c => c.Solde, c => c.Solde + dto.Montant));
-
-                // Mise à jour de la carte récepteur
-                await _dbContext.Cartes
-                    .Where(c => c.NumCarte == dto.CarteRecepteurNum)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(c => c.Solde, c => c.Solde + dto.Montant));
-
-                // 6. Enregistrement de la transaction
+                // 4. Création de la recharge
                 var recharge = new RechargeCarte
                 {
                     CarteEmetteurNum = dto.CarteEmetteurNum,
                     CarteRecepteurNum = dto.CarteRecepteurNum,
                     Montant = dto.Montant,
-                    Frais = frais,
                     DateRecharge = DateTime.UtcNow
                 };
 
                 _dbContext.RechargesCarte.Add(recharge);
+                await _dbContext.SaveChangesAsync(); // Sauvegarde pour obtenir l'ID
+
+                // 5. Enregistrement des frais si nécessaire
+                if (frais > 0)
+                {
+                    var fraisCarte = new FraisCarte
+                    {
+                        Type = "Recharge",
+                        Date = DateTime.UtcNow,
+                        Montant = frais,
+                        NumCarte = dto.CarteEmetteurNum,
+                        IdsRechargesStr = recharge.Id.ToString() // Stockage de l'ID de recharge
+                    };
+                    _dbContext.FraisCartes.Add(fraisCarte);
+                }
+
+                // 6. Mise à jour des soldes
+                carteEmetteur.Compte.Solde -= montantTotal;
+                carteEmetteur.Solde -= montantTotal;
+
+                carteRecepteur.Compte.Solde += dto.Montant;
+                carteRecepteur.Solde += dto.Montant;
+
                 await _dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                // Récupération des nouveaux soldes pour la réponse
-                var nouveauSoldeEmetteur = await _dbContext.Comptes
-                    .Where(c => c.RIB == carteEmetteur.Compte.RIB)
-                    .Select(c => c.Solde)
-                    .FirstOrDefaultAsync();
-
-                var nouveauSoldeRecepteur = await _dbContext.Comptes
-                    .Where(c => c.RIB == carteRecepteur.Compte.RIB)
-                    .Select(c => c.Solde)
-                    .FirstOrDefaultAsync();
-
+                // 7. Préparation de la réponse
                 return Ok(new
                 {
                     Success = true,
@@ -731,8 +717,8 @@ namespace STBEverywhere_back_APICarte.Controllers
                         RechargeId = recharge.Id,
                         MontantTransfere = dto.Montant,
                         FraisAppliques = frais,
-                        NouveauSoldeEmetteur = nouveauSoldeEmetteur,
-                        NouveauSoldeRecepteur = nouveauSoldeRecepteur
+                        NouveauSoldeEmetteur = carteEmetteur.Compte.Solde,
+                        NouveauSoldeRecepteur = carteRecepteur.Compte.Solde
                     }
                 });
             }
@@ -740,10 +726,14 @@ namespace STBEverywhere_back_APICarte.Controllers
             {
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Erreur lors de la recharge");
-                return StatusCode(500, new { Success = false, Message = "Erreur interne" });
+                return StatusCode(500, new
+                {
+                    Success = false,
+                    Message = "Erreur interne du serveur",
+                    Details = ex.Message
+                });
             }
         }
-
 
         [HttpGet("historique-recharges")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -753,23 +743,19 @@ namespace STBEverywhere_back_APICarte.Controllers
         {
             try
             {
-                // 1. Récupérer l'ID du client à partir du token
                 var userId = GetUserIdFromToken();
                 var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-
-                // 2. Récupérer toutes les cartes du client
                 var cartesClient = await _dbContext.Cartes
                     .Where(c => c.Compte.ClientId == client.Id)
                     .Select(c => c.NumCarte)
                     .ToListAsync();
 
-                // 3. Récupérer l'historique des recharges (en tant qu'émetteur ou récepteur)
                 var historique = await _dbContext.RechargesCarte
                     .Include(r => r.CarteEmetteur)
                     .Include(r => r.CarteRecepteur)
                     .Where(r => cartesClient.Contains(r.CarteEmetteurNum) ||
-                               cartesClient.Contains(r.CarteRecepteurNum))
+                                cartesClient.Contains(r.CarteRecepteurNum))
                     .OrderByDescending(r => r.DateRecharge)
                     .Select(r => new HistoriqueRechargeDto
                     {
@@ -778,8 +764,11 @@ namespace STBEverywhere_back_APICarte.Controllers
                         CarteEmetteurNum = r.CarteEmetteurNum,
                         CarteRecepteurNum = r.CarteRecepteurNum,
                         Montant = r.Montant,
-                        Frais = r.Frais,
+                        Frais = _dbContext.FraisCartes
+                    .Where(f => f.IdsRechargesStr.Contains(r.Id.ToString()))
+                    .Sum(f => f.Montant),
 
+                        isDebit = cartesClient.Contains(r.CarteEmetteurNum) 
                     })
                     .ToListAsync();
 

@@ -251,6 +251,37 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "ModificationRequests",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    ClientId = table.Column<int>(type: "int", nullable: false),
+                    FieldToModify = table.Column<string>(type: "varchar(50)", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    NewValue = table.Column<string>(type: "varchar(255)", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    JustificationPath = table.Column<string>(type: "varchar(255)", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    RequestDate = table.Column<DateTime>(type: "datetime", nullable: false),
+                    Status = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false, defaultValue: "Pending")
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    ProcessedByAgentId = table.Column<int>(type: "int", nullable: true),
+                    ProcessedDate = table.Column<DateTime>(type: "datetime", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ModificationRequests", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ModificationRequests_Clients_ClientId",
+                        column: x => x.ClientId,
+                        principalTable: "Clients",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "NotificationsPack",
                 columns: table => new
                 {
@@ -767,31 +798,6 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
-                name: "FraisCartes",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
-                    Type = table.Column<string>(type: "varchar(50)", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    Date = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    Montant = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    NumCarte = table.Column<string>(type: "varchar(255)", nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_FraisCartes", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_FraisCartes_Cartes_NumCarte",
-                        column: x => x.NumCarte,
-                        principalTable: "Cartes",
-                        principalColumn: "NumCarte",
-                        onDelete: ReferentialAction.Cascade);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
-
-            migrationBuilder.CreateTable(
                 name: "RechargesCarte",
                 columns: table => new
                 {
@@ -802,7 +808,6 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                     CarteRecepteurNum = table.Column<string>(type: "varchar(16)", maxLength: 16, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Montant = table.Column<decimal>(type: "decimal(18,3)", nullable: false),
-                    Frais = table.Column<decimal>(type: "decimal(18,3)", nullable: false),
                     DateRecharge = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
@@ -853,6 +858,39 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
+            migrationBuilder.CreateTable(
+                name: "FraisCartes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    Type = table.Column<string>(type: "varchar(50)", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    Date = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    Montant = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    NumCarte = table.Column<string>(type: "varchar(255)", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    IdsRecharges = table.Column<string>(type: "longtext", nullable: false)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    RechargeCarteId = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FraisCartes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FraisCartes_Cartes_NumCarte",
+                        column: x => x.NumCarte,
+                        principalTable: "Cartes",
+                        principalColumn: "NumCarte",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_FraisCartes_RechargesCarte_RechargeCarteId",
+                        column: x => x.RechargeCarteId,
+                        principalTable: "RechargesCarte",
+                        principalColumn: "Id");
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
             migrationBuilder.InsertData(
                 table: "Conventions",
                 columns: new[] { "id_convention", "marge_bancaire", "nom_convention" },
@@ -868,11 +906,11 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 columns: new[] { "Id", "Email", "IsActive", "PasswordHash", "ResetPasswordToken", "ResetPasswordTokenExpiry", "Role" },
                 values: new object[,]
                 {
-                    { 1, "guesmiimahmoud@gmail.com", true, "$2a$11$zn0PGzMp.fIaDgvLyld73uvCY0CSXbD.wzIVhOsiHj.KYHnyJq9ue", null, null, "Client" },
-                    { 2, "jane.smith@example.com", true, "$2a$11$gL159ozDhiAdnVJapzcjku5UA8sIl9e67VSwvIP9J//x4YjrzT03O", null, null, "Client" },
-                    { 3, "agent@stb.com", true, "$2a$11$3lOuJu9XUHpUOu1BOsUnS.263i9sOIWYxsRJniZzfIax4EEuw/r/S", null, null, "Agent" },
-                    { 4, "robert.smith@example.com", true, "$2a$11$o1TXH2IYKOsRPCj1irVsIOx3zGkFS2jR1yEcOwWi50cNdzbgM.aei", null, null, "Client" },
-                    { 5, "agent5@stb.com", true, "$2a$11$3xk6zfkiuJDjaa5QxW7ZBuaU9vihezw8Txuj3oeu2x.Df682lT0aW", null, null, "Agent" }
+                    { 1, "guesmiimahmoud@gmail.com", true, "$2a$11$8.FuTqf5/YrQHvIJo3DcveKyNoNqT7HrAjznA7.vZc8cvAg9YoDUi", null, null, "Client" },
+                    { 2, "jane.smith@example.com", true, "$2a$11$/MNV7FBkCJVYnqGMNuqzJu9ZXlcIne7LS5teSNj/MUDTIgaoIyYeK", null, null, "Client" },
+                    { 3, "agent@stb.com", true, "$2a$11$xvJqvbLPkBl1UU80upstR.2E98Ui.PHqhRIitdSELOetiFY4V7ARK", null, null, "Agent" },
+                    { 4, "robert.smith@example.com", true, "$2a$11$VVT2NZDgce7Dxc9rqBEoCeO1/nbVzm19dqQVvPBDh1IBJU1EaOaDy", null, null, "Client" },
+                    { 5, "agent5@stb.com", true, "$2a$11$29zxFiRKeCegZf5Of7Y6CuMgcvtplwHlfsMpqGsGOe7FSc6Comuam", null, null, "Agent" }
                 });
 
             migrationBuilder.InsertData(
@@ -908,8 +946,8 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 columns: new[] { "Iddemande", "CIN", "CarteAjouter", "DateCreation", "Email", "EmailEnvoye", "EmailEnvoyeLivree", "NomCarte", "RIB", "NumTel", "Statut", "TypeCarte" },
                 values: new object[,]
                 {
-                    { 1, "14668061", false, new DateTime(2025, 5, 4, 17, 18, 43, 30, DateTimeKind.Local).AddTicks(4969), "john.doe@example.com", false, false, "VisaClassic", "10000001121041340847", "12345678", "DisponibleEnAgence", "International" },
-                    { 2, "14668062", false, new DateTime(2025, 5, 4, 17, 18, 43, 30, DateTimeKind.Local).AddTicks(5035), "jane.smith@example.com", false, false, "Mastercard", "65432110223463790345", "87654321", "EnPreparation", "National" }
+                    { 1, "14668061", false, new DateTime(2025, 5, 5, 22, 45, 28, 719, DateTimeKind.Local).AddTicks(8723), "john.doe@example.com", false, false, "VisaClassic", "10000001121041340847", "12345678", "DisponibleEnAgence", "International" },
+                    { 2, "14668062", false, new DateTime(2025, 5, 5, 22, 45, 28, 719, DateTimeKind.Local).AddTicks(8801), "jane.smith@example.com", false, false, "Mastercard", "65432110223463790345", "87654321", "EnPreparation", "National" }
                 });
 
             migrationBuilder.InsertData(
@@ -1009,6 +1047,11 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 column: "NumCarte");
 
             migrationBuilder.CreateIndex(
+                name: "IX_FraisCartes_RechargeCarteId",
+                table: "FraisCartes",
+                column: "RechargeCarteId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_FraisChequiers_ChequierId",
                 table: "FraisChequiers",
                 column: "ChequierId");
@@ -1027,6 +1070,21 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 name: "IX_HistoriquesSoldes_RIB",
                 table: "HistoriquesSoldes",
                 column: "RIB");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ModificationRequests_ClientId",
+                table: "ModificationRequests",
+                column: "ClientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ModificationRequests_RequestDate",
+                table: "ModificationRequests",
+                column: "RequestDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ModificationRequests_Status",
+                table: "ModificationRequests",
+                column: "Status");
 
             migrationBuilder.CreateIndex(
                 name: "IX_NotificationsPack_ClientId",
@@ -1109,6 +1167,9 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 name: "HistoriquesSoldes");
 
             migrationBuilder.DropTable(
+                name: "ModificationRequests");
+
+            migrationBuilder.DropTable(
                 name: "NotificationsPack");
 
             migrationBuilder.DropTable(
@@ -1124,13 +1185,13 @@ namespace STBEverywhere_Back_SharedModels.Migrations
                 name: "PeriodeDecouverts");
 
             migrationBuilder.DropTable(
-                name: "RechargesCarte");
-
-            migrationBuilder.DropTable(
                 name: "Reclamations");
 
             migrationBuilder.DropTable(
                 name: "Virements");
+
+            migrationBuilder.DropTable(
+                name: "RechargesCarte");
 
             migrationBuilder.DropTable(
                 name: "Chequiers");
