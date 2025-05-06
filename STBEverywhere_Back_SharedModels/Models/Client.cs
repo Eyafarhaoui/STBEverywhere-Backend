@@ -13,7 +13,7 @@ namespace STBEverywhere_Back_SharedModels
     public class Client
     {
         [Key]
-        public int Id { get; set; }  // Clé primaire
+        public int Id { get; set; }  
 
         [Required]
         public string Nom { get; set; }
@@ -89,5 +89,7 @@ namespace STBEverywhere_Back_SharedModels
 
         [JsonIgnore]
         public virtual ICollection<NotificationReclamation> NotificationsReclamation { get; set; } = new List<NotificationReclamation>();
+
+
     }
 }

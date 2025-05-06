@@ -35,7 +35,7 @@ namespace STBEverywhere_Back_SharedModels.Models
 
 
     public enum StatutDemandeEnum
-    {
+    { 
         EnAttente = 0,
         Accepte = 1,
         Refuse = 2

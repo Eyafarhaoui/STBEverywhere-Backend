@@ -24,6 +24,9 @@ using iTextSharp.text;
 using iTextSharp.text.pdf.draw;
 
 using Microsoft.AspNetCore.Hosting;
+
+using Microsoft.Extensions.Logging;
+
 using Microsoft.AspNetCore.Authorization;
 
 namespace STBEverywhere_back_APIClient.Controllers
@@ -247,42 +250,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode(500, new { message = "Erreur interne" });
             }
         }
-        [HttpPut("update")]
-        public async Task<IActionResult> UpdateClientInfo([FromBody] UpdateClientDto dto)
-        {
-            try
-            {
-                var userId = GetUserIdFromToken();
-                var client = await _userRepository.GetClientByUserIdAsync(userId);
-
-                // Mapper le DTO vers l'entité Client
-                client.Telephone = dto.Telephone;
-                client.Email = dto.Email;
-                client.Adresse = dto.Adresse;
-                client.Civilite = dto.Civilite;
-                client.EtatCivil = dto.EtatCivil;
-                client.Residence = dto.Residence;
-                client.SituationProfessionnelle = dto.SituationProfessionnelle;
-                client.NiveauEducation = dto.NiveauEducation;
-                client.NombreEnfants = dto.NombreEnfants;
-                client.RevenuMensuel = dto.RevenuMensuel;
-
-
-                bool isUpdated = await _clientService.UpdateClientInfoAsync(client.Id, client);
-
-                if (!isUpdated)
-                {
-                    return NotFound(new { message = "Client non trouvé" });
-                }
-
-                return Ok(new { message = "Informations mises à jour avec succès !" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erreur lors de la mise à jour");
-                return StatusCode(500, new { message = "Erreur interne" });
-            }
-        }
+       
 
         // Télécharger le fichier KYC
 
@@ -475,10 +443,10 @@ namespace STBEverywhere_back_APIClient.Controllers
                 // 2. Style des polices
                 var titleFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 18, BaseColor.DarkGray);
                 var headerFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 10, BaseColor.Black);
-                var arabicFont = FontFactory.GetFont("c:/windows/fonts/arialuni.ttf", BaseFont.IDENTITY_H, 8); // Police supportant l'arabe
-                var sectionFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 14, BaseColor.Blue);
+                var arabicFont = FontFactory.GetFont("c:/windows/fonts/arialuni.ttf", BaseFont.IDENTITY_H, 8);
                 var labelFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 11, BaseColor.Black);
                 var valueFont = FontFactory.GetFont(FontFactory.HELVETICA, 11, BaseColor.Black);
+                var sectionFont = FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 13, BaseColor.Black); // ✅ Ajouté
 
                 // 3. Entête avec logo STB
                 var logoPath = Path.Combine(_environment.WebRootPath, "images", "STBlogo.jpg");
@@ -489,8 +457,6 @@ namespace STBEverywhere_back_APIClient.Controllers
                     logo.Alignment = Image.ALIGN_RIGHT;
                     document.Add(logo);
                 }
-
-              
 
                 // 5. Mentions légales bilingues (Français/Arabe)
                 var headerTable = new PdfPTable(2) { WidthPercentage = 100 };
@@ -506,9 +472,8 @@ namespace STBEverywhere_back_APIClient.Controllers
                 };
                 headerTable.AddCell(frenchCell);
 
-               
-
                 document.Add(headerTable);
+
                 // 4. Titre principal centré
                 var title = new Paragraph("FICHE KYC - CONNAISSANCE DE CLIENT", titleFont)
                 {
@@ -593,6 +558,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return memoryStream.ToArray();
             }
         }
+
 
         private void AddClientSection(Document document, string title, Font titleFont,
             Dictionary<string, string> data, Font labelFont, Font valueFont)
@@ -1111,6 +1077,13 @@ namespace STBEverywhere_back_APIClient.Controllers
 
 
 
+
+
+
+
+
+
+
         [HttpGet("student-demands-by-agency/{agencyId}")]
 
         public async Task<IActionResult> GetStudentDemandsByAgency(string? agencyId = null)
@@ -1294,6 +1267,22 @@ Les documents sont joints à cet email.";
         }
 
 
+
+
+
+
+
+
+
+
+       
+
+
+
+
+
+
+
         [HttpPost("refuser-elyssa-documents/{demandId}")]
 
         public async Task<IActionResult> refuserElyssaDocumentsEmail(int demandId)
@@ -1359,6 +1348,9 @@ Les documents sont joints à cet email.";
                 return StatusCode(500, "Erreur lors de  refus de la demande");
             }
         }
+
+       
+
 
         [HttpGet("generate-student-pdf/{demandId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]

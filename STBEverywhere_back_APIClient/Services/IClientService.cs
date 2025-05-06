@@ -16,6 +16,6 @@ namespace STBEverywhere_back_APIClient.Services
         Task<bool> RemoveProfileImageAsync(int clientId);
         Task<Convention?> GetConventionByIdAsync(int id);
 
-
+        
     }
 }
