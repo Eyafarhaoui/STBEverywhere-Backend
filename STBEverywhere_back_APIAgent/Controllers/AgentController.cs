@@ -14,6 +14,8 @@ using STBEverywhere_back_APIClient.Services;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
 using STBEverywhere_Back_SharedModels.Data;
+using Microsoft.AspNetCore.Http.HttpResults;
+using System.Net;
 
 namespace STBEverywhere_back_APIAgent.Controllers
 {
@@ -28,17 +30,19 @@ namespace STBEverywhere_back_APIAgent.Controllers
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _environment;
+        private readonly HttpClient _httpClient;
         private readonly STBEverywhere_back_APIAgent.Service.EmailService _emailService;
 
         public AgentController(
      IHttpContextAccessor httpContextAccessor,
-     ILogger<AgentController> logger,
+     ILogger<AgentController> logger, HttpClient httpClient,
      IUserRepository userRepository,
      IHttpClientFactory httpClientFactory,
      IConfiguration configuration,
      ApplicationDbContext context,
      IWebHostEnvironment environment,
     STBEverywhere_back_APIAgent.Service.EmailService emailService)
+
         {
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
@@ -47,8 +51,158 @@ namespace STBEverywhere_back_APIAgent.Controllers
             _configuration = configuration;
             _context = context;
             _environment = environment;
+
             _emailService = emailService;
+
+            _httpClient = httpClient;
+
         }
+
+
+
+
+
+
+
+
+        [HttpGet("statistiques-KYC")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetStatistiquesKYCAgent()
+        {
+            try
+            {
+                _logger.LogInformation("Démarrage de l'endpoint GetStatistiquesKYCAgent");
+
+                // 1) Récupérer l'agent connecté
+                var userId = GetUserIdFromToken();
+                _logger.LogInformation("UserId extrait du token: {UserId}", userId);
+
+                var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+
+                if (agent == null)
+                {
+                    _logger.LogWarning(" Agent introuvable pour l'utilisateur {UserId}", userId);
+                    return BadRequest("Agent introuvable.");
+                }
+
+                if (string.IsNullOrEmpty(agent.AgenceId))
+                {
+                    _logger.LogWarning(" L'agent {AgentId} n'a pas d'agence définie.", agent.Id);
+                    return BadRequest("Agence non définie pour cet agent.");
+                }
+
+                _logger.LogInformation("Agent trouvé: Id={AgentId}, AgenceId={AgenceId}", agent.Id, agent.AgenceId);
+
+                var apiUrl = $"http://localhost:5260/api/Client/getDemandesKYCByAgence/{agent.AgenceId}";
+                _logger.LogInformation("Appel de l'API: {ApiUrl}", apiUrl);
+
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.GetAsync(apiUrl);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogError(ex, " Erreur réseau lors de l'appel à l'API.");
+                    return StatusCode(500, "Erreur de communication avec le service.");
+                }
+
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    _logger.LogInformation(" Aucune demande trouvée pour l'agence {AgenceId}.", agent.AgenceId);
+                    return Ok(new { Total = 0, EnAttente = 0, Traitees = 0 });
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError(" L'API a retourné un statut non succès: {StatusCode} avec message: {ErrorContent}", response.StatusCode, errorContent);
+                    return StatusCode((int)response.StatusCode, errorContent);
+                }
+
+                var demandes = await response.Content.ReadFromJsonAsync<IEnumerable<ModificationRequest>>();
+
+                if (demandes == null || !demandes.Any())
+                {
+                    _logger.LogInformation(" Aucun résultat retourné par l'API.");
+                    return Ok(new { Total = 0, EnAttente = 0, Traitees = 0 });
+                }
+
+                // 3) Logs détaillés des demandes récupérées
+                _logger.LogInformation(" {NbDemandes} demandes récupérées de l'API.", demandes.Count());
+
+                foreach (var demande in demandes)
+                {
+                    _logger.LogInformation(
+                        "🔎 Demande Id={Id}, ClientId={ClientId}, Status={Status}, ProcessedByAgentId={ProcessedBy}, ProcessedDate={ProcessedDate}",
+                        demande.Id, demande.ClientId, demande.Status, demande.ProcessedByAgentId, demande.ProcessedDate);
+                }
+
+                var today = DateTime.Today;
+                _logger.LogInformation(" Date d'aujourd'hui pour le filtrage : {Today}", today);
+
+                // 4) Comptage
+                var nbEnAttente = demandes.Count(d => d.Status == "EnCours");
+                _logger.LogInformation("📥 Nombre de demandes en attente (Status='EnCours') : {NbEnAttente}", nbEnAttente);
+
+                var nbTraitees = demandes.Count(d =>
+                    d.Status != "EnCours" &&
+                    d.ProcessedByAgentId == agent.Id &&
+                    d.ProcessedDate.HasValue &&
+                    d.ProcessedDate.Value.Date == today
+                );
+                _logger.LogInformation("Nombre de demandes traitées aujourd'hui par l'agent {AgentId} : {NbTraitees}", agent.Id, nbTraitees);
+
+                var total = nbEnAttente + nbTraitees;
+                _logger.LogInformation("Total calculé : {Total}", total);
+
+                // 5) Retourner la réponse
+                return Ok(new
+                {
+                    Total = total,
+                    EnAttente = nbEnAttente,
+                    Traitees = nbTraitees
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, " Erreur interne lors de la récupération des statistiques.");
+                return StatusCode(500, "Erreur interne du serveur.");
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
 
         #region Demandes de modification client
         [HttpGet("modification-requests/pending")]
@@ -153,6 +307,13 @@ namespace STBEverywhere_back_APIAgent.Controllers
             try
             {
                 var userId = GetUserIdFromToken();
+                var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+
+                if (agent == null || string.IsNullOrEmpty(agent.AgenceId))
+                {
+                    return Unauthorized(new { message = "Agent non autorisé" });
+                }
+
                 var request = await _context.ModificationRequests
                     .Include(r => r.Client)
                     .ThenInclude(c => c.User)  // Important pour récupérer l'email
@@ -163,11 +324,7 @@ namespace STBEverywhere_back_APIAgent.Controllers
                     return NotFound("Demande non trouvée");
                 }
 
-                var agent = await _userRepository.GetAgentByUserIdAsync(userId);
-                if (agent == null || request.Client.AgenceId != agent.AgenceId)
-                {
-                    return BadRequest("Vous n'êtes pas autorisé à traiter cette demande");
-                }
+               
 
               
 
@@ -200,8 +357,11 @@ namespace STBEverywhere_back_APIAgent.Controllers
                     request.Status = "Refusee";
                 }
 
-                request.ProcessedByAgentId = userId;
-                request.ProcessedDate = DateTime.UtcNow;
+
+                request.ProcessedByAgentId = agent.Id;
+                request.ProcessedDate = DateTime.Now;
+               // request.ResponseComment = dto.Comment;
+
 
                 await _context.SaveChangesAsync();
 

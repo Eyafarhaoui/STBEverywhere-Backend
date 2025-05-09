@@ -23,7 +23,6 @@ namespace STBEverywhere_Back_SharedModels.Models
         [Column(TypeName = "decimal(18,3)")]
         public decimal MontantMaxDecouvert { get; set; }
 
-        [Column(TypeName = "decimal(18,3)")]
-        public decimal SoldeInitial { get; set; }
+       
     }
 }

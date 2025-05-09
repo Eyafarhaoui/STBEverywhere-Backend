@@ -46,6 +46,11 @@
         "Path": "Chatbot\\Chatbot.csproj",
         "Action": "Start",
         "DebugTarget": "http"
+      },
+      {
+        "Path": "STBEverywhere_Back_ApiUnitaire\\STBEverywhere_Back_ApiUnitaire.csproj",
+        "Action": "Start",
+        "DebugTarget": "http"
       }
     ]
   }

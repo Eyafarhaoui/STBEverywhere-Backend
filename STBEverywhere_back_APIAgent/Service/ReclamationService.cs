@@ -7,6 +7,8 @@ using STBEverywhere_back_APIClient.Services;
 using STBEverywhere_back_APIClient.Services;
 
 using STBEverywhere_Back_SharedModels.Models;
+using System.Text;
+using System.Text.Json;
 
 namespace STBEverywhere_back_APIAgent.Service
 {
@@ -48,8 +50,40 @@ namespace STBEverywhere_back_APIAgent.Service
             var email = reclamation.Client?.Email;
             if (string.IsNullOrWhiteSpace(email))
                 return false;
+
+            // 📧 Préparer l'objet du mail
+            var emailRequest = new
+            {
+                to = email,
+                subject = "Réponse à votre réclamation",
+                content = contenuReponse
+            };
+
+            //  Appel HTTP POST vers ton propre controller
+            using (var httpClient = new HttpClient())
+            {
+                var json = JsonSerializer.Serialize(emailRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await httpClient.PostAsync("http://localhost:5203/api/Email/send", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+                else
+                {
+                    
+                    return false;
+                }
+            }
+
+
+            /*var email = reclamation.Client?.Email;
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
             await _emailService.SendEmailAsync(email, "Réponse à votre réclamation", contenuReponse);
-            return true;
+            return true;*/
         }
     }
 

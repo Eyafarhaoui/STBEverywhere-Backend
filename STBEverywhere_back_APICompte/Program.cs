@@ -67,6 +67,7 @@ builder.Services.AddScoped<IFraisCompteRepository, FraisCompteRepository>();
 builder.Services.AddHostedService<DemandeModificationDecouvertJob>();
 builder.Services.AddScoped<IEmailLogRepository, EmailLogRepository>();
 builder.Services.AddScoped<EmailService>();
+builder.Services.AddScoped<CalculInteretsService>();
 
 builder.Services.AddSingleton(typeof(IConverter), new SynchronizedConverter(new PdfTools()));
 builder.Services.AddAutoMapper(typeof(MappingConfig));
@@ -74,7 +75,7 @@ builder.Services.AddControllers().AddNewtonsoftJson();
 
 builder.Services.AddScoped<DecouvertTrackerService>();
 builder.Services.AddScoped<AgiosService>();
-builder.Services.AddHostedService<AgiosBackgroundService>();
+//builder.Services.AddHostedService<AgiosBackgroundService>();
 string agenceServiceUrl = "http://localhost:5036"; // URL définie en dur
 
 builder.Services.AddHttpClient("AgenceService", client =>
@@ -228,9 +229,32 @@ app.UseAuthorization();
 
 app.UseHangfireDashboard("/hangfire");
 
+
+// Job quotidien à minuit
+RecurringJob.AddOrUpdate<CalculInteretsService>(
+    x => x.CalculerInteretsQuotidiens(),
+    Cron.Daily
+);
+
+// Job trimestriel (1er jour de chaque trimestre)
+RecurringJob.AddOrUpdate<CalculInteretsService>(
+    x => x.VerserInteretsTrimestriels(),
+    "0 0 1 1,4,7,10 *" // 1er Janvier, Avril, Juillet, Octobre à minuit
+);
+
+
+
 RecurringJob.AddOrUpdate<IHistoriqueSoldeService>(
     x => x.AlimenterHistoriqueSolde(),
     Cron.Daily,
+    TimeZoneInfo.FindSystemTimeZoneById("Africa/Tunis")
+);
+
+
+//hangfire des agios
+RecurringJob.AddOrUpdate<AgiosService>(
+    x => x.CalculerEtAppliquerAgiosMensuels(),
+    "0 3 1 * *", // Le 1er de chaque mois à 03h00 du matin
     TimeZoneInfo.FindSystemTimeZoneById("Africa/Tunis")
 );
 
