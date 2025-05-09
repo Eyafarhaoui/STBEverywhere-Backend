@@ -32,10 +32,10 @@ namespace STBEverywhere_back_APIChequier.Jobs
 
                         foreach (var email in emailsNonEnvoyes)
                         {
-                            if (await emailService.SendEmailAsync(email.Destinataire, email.Sujet, email.Contenu))
+                           /* if (await emailService.SendEmailAsync(email.Destinataire, email.Sujet, email.Contenu))
                             {
                                 email.IsEnvoye = true;
-                            }
+                            }*/
                         }
 
                         await context.SaveChangesAsync();

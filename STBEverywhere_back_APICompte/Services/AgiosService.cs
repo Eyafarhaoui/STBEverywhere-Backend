@@ -26,6 +26,9 @@ namespace STBEverywhere_back_APICompte.Services
         public async Task CalculerEtAppliquerAgiosMensuels()
         {
             const decimal TAUX_AGIOS_ANNUEL = 0.12m; // 12% fixe pour tous les comptes
+            const decimal AGIOS_MINIMUM = 2.0m; // Agios minimum de 2 TND
+            const decimal TAUX_TVA = 0.19m; // 19% TVA en Tunisie
+            const decimal FRAIS_FIXES = 0.5m; // Frais fixes par compte
 
             _logger.LogInformation("Début du calcul mensuel des agios");
 
@@ -45,7 +48,6 @@ namespace STBEverywhere_back_APICompte.Services
                 foreach (var compte in comptes)
                 {
                     decimal totalAgios = 0;
-                    //une collection des périodes de découvert pour chaque compte
                     var periodes = compte.PeriodesDecouvert
                         .Where(p => p.DateDebut <= dateFinMois &&
                                    (p.DateFin == null || p.DateFin >= dateDebutMois))
@@ -55,31 +57,64 @@ namespace STBEverywhere_back_APICompte.Services
                     {
                         var debut = periode.DateDebut < dateDebutMois ? dateDebutMois : periode.DateDebut;
                         var fin = (periode.DateFin ?? dateCalcul) > dateFinMois ? dateFinMois : (periode.DateFin ?? dateCalcul);
-                        //.Days pour donner le nombre de jours entiers dans cette durée.
                         var jours = (fin - debut).Days;
 
                         if (jours > 0)
                         {
                             totalAgios += AgiosCalculator.CalculerAgios(
                                 periode.MontantMaxDecouvert,
-                                TAUX_AGIOS_ANNUEL, // Taux fixe ici
+                                TAUX_AGIOS_ANNUEL, // Taux fixe 
                                 jours);
                         }
                     }
 
                     if (totalAgios > 0)
                     {
+
+                        var tva = totalAgios * TAUX_TVA;
+                    
+
+                        var montantFinal = totalAgios + tva + FRAIS_FIXES;
+
+                        if (montantFinal < AGIOS_MINIMUM)
+                        {
+                            montantFinal = AGIOS_MINIMUM;
+                        }
                         compte.Solde -= totalAgios;
                         _context.FraisComptes.Add(new FraisCompte
                         {
-                            type = "AgiosDecouvert",
+                            type = "PRLV AGIOS Découvert MENSUELS",
                             Date = dateCalcul,
-                            Montant = totalAgios,
+                            Montant = montantFinal,
                             RIB = compte.RIB,
                            
                         });
 
                         _logger.LogInformation($"Agios de {totalAgios} appliqués au compte {compte.RIB}");
+
+
+
+                        // Clôturer la période de découvert et en créer une nouvelle a la fin de chaque moi pour eviter que le client soit debiter chaque mois sur plus qu'un mois
+                        var periodeActive = compte.PeriodesDecouvert.FirstOrDefault(p => p.DateFin == null);
+                        if (periodeActive != null)
+                        {
+                            // Clôturer la période actuelle
+                            periodeActive.DateFin = dateCalcul;
+
+                            // Créer une nouvelle période de découvert
+                            _context.PeriodeDecouverts.Add(new PeriodeDecouvert
+                            {
+                                RIB = compte.RIB,
+                                DateDebut = dateCalcul,
+                                MontantMaxDecouvert = 0, 
+                            });
+
+                            _logger.LogInformation($"Période de découvert clôturée et nouvelle période créée pour le compte {compte.RIB}");
+                        }
+
+
+
+
                     }
                 }
 

@@ -27,31 +27,62 @@ namespace STBEverywhere_back_APIChequier.Services
         private readonly string _smtpUser = "farhaouieya@gmail.com";
         private readonly string _smtpPass = "lyxz bipo hllq gcra";
 
-        public async Task<bool> SendEmailAsync(string toEmail, string subject, string message)
+
+
+        public async Task LogEmailAsync(string destinataire, string sujet, string contenu, int id, string type)
         {
-            try
+            var emailLog = new EmailLog
             {
-                var email = new MimeMessage();
-                email.From.Add(new MailboxAddress("Banque", _smtpUser));
-                email.To.Add(new MailboxAddress("", toEmail));
-                email.Subject = subject;
-                email.Body = new TextPart("html") { Text = message };
+                Destinataire = destinataire,
+                EmailType = type,
+                Sujet = sujet,
+                Contenu = contenu,
+                DemandeId = id,
+                DateEnvoi = DateTime.UtcNow,
+                IsEnvoye = true, 
+            };
 
-                using var smtp = new SmtpClient();
-                await smtp.ConnectAsync(_smtpServer, _smtpPort, SecureSocketOptions.StartTls);
-                await smtp.AuthenticateAsync(_smtpUser, _smtpPass);
-                await smtp.SendAsync(email);
-                await smtp.DisconnectAsync(true);
+            _logger.LogInformation("Log email envoyé pour la demande {id} à l'email {destinataire}.", id, destinataire);
 
-                return true; // Succès
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Échec de l'envoi de l'e-mail à {toEmail}.");
-                return false; // Échec
-            }
+            await _emailLogRepository.AddEmailLogAsync(emailLog);
+            await _emailLogRepository.SaveChangesAsync();
         }
-        public async Task<bool> LogEmailAsync(string destinataire, string sujet, string contenu, int id,String type)
+
+
+
+
+
+
+
+
+
+
+
+        /*  public async Task<bool> SendEmailAsync(string toEmail, string subject, string message)
+          {
+              try
+              {
+                  var email = new MimeMessage();
+                  email.From.Add(new MailboxAddress("Banque", _smtpUser));
+                  email.To.Add(new MailboxAddress("", toEmail));
+                  email.Subject = subject;
+                  email.Body = new TextPart("html") { Text = message };
+
+                  using var smtp = new SmtpClient();
+                  await smtp.ConnectAsync(_smtpServer, _smtpPort, SecureSocketOptions.StartTls);
+                  await smtp.AuthenticateAsync(_smtpUser, _smtpPass);
+                  await smtp.SendAsync(email);
+                  await smtp.DisconnectAsync(true);
+
+                  return true; // Succès
+              }
+              catch (Exception ex)
+              {
+                  _logger.LogError(ex, $"Échec de l'envoi de l'e-mail à {toEmail}.");
+                  return false; // Échec
+              }
+          }*/
+        /*public async Task<bool> LogEmailAsync(string destinataire, string sujet, string contenu, int id,String type)
         {
             var emailLog = new EmailLog
             {
@@ -73,6 +104,7 @@ namespace STBEverywhere_back_APIChequier.Services
 
             // Attendre l'envoi de l'e-mail et vérifier s'il a réussi
             //bool emailSent = await SendEmailAsync(destinataire, sujet, contenu);
+
             bool emailSent = await SendEmailAsync(destinataire, sujet, contenu);
             if (emailSent)
             {
@@ -82,11 +114,11 @@ namespace STBEverywhere_back_APIChequier.Services
             }
 
             return emailSent;
-        }
+        }*/
 
 
 
-        
+
     }
 
 }
