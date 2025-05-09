@@ -32,7 +32,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<ICompteService,STBEverywhere_back_APICompte.Services.CompteService>();
 builder.Services.AddScoped<ICompteRepository, CompteRepository>();
 builder.Services.AddScoped<IVirementRepository, VirementRepository>();
-
+builder.Services.AddSingleton<ICvvGeneratorService, CvvGeneratorService>();
 builder.Services.AddScoped<ICarteRepository, CarteRepository>();
 builder.Services.AddScoped<STBEverywhere_back_APICarte.Services.EmailService>();
 builder.Services.AddHttpClient();

@@ -909,6 +909,14 @@ namespace STBEverywhere_back_APIClient.Controllers
                 {
                     return NotFound("Client not found");
                 }
+                var existingElyssaRequest = await _context.PackElyssa
+            .FirstOrDefaultAsync(p => p.ClientId == clientId && p.Status == "Acceptee");
+
+                if (existingElyssaRequest != null)
+                {
+                    return BadRequest("Vous êtes déjà inscrit au Pack Elyssa, vous ne pouvez pas vous inscrire au Pack Student.");
+                }
+
 
                 var existingRequest = await _context.PackStudents
                     .FirstOrDefaultAsync(p => p.ClientId == clientId && ( p.Status == "EnAttente"));
@@ -987,14 +995,22 @@ namespace STBEverywhere_back_APIClient.Controllers
                     return NotFound("Client not found");
                 }
 
-                var existingRequest = await _context.PackStudents
+
+                var existingStudentRequest = await _context.PackStudents
+        .FirstOrDefaultAsync(p => p.ClientId == clientId && p.Status == "Acceptee");
+
+                if (existingStudentRequest != null)
+                {
+                    return BadRequest("Vous êtes déjà inscrit au Pack Student, vous ne pouvez pas vous inscrire au Pack Elyssa.");
+                }
+                var existingRequest = await _context.PackElyssa
                     .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "EnAttente"));
 
                 if (existingRequest != null)
                 {
                     return BadRequest("Vous avez déjà une demande en cours.");
                 }
-                var existinngRequest = await _context.PackStudents
+                var existinngRequest = await _context.PackElyssa
                     .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee"));
 
                 if (existinngRequest != null)
@@ -1961,6 +1977,43 @@ Les documents sont joints à cet email.";
                 return StatusCode(500, "Erreur interne du serveur");
             }
         }
+        [HttpPut("update")]
+        public async Task<IActionResult> UpdateClientInfo([FromBody] UpdateClientDto dto)
+        {
+            try
+            {
+                var userId = GetUserIdFromToken();
+                var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+                // Mapper le DTO vers l'entité Client
+                client.Telephone = dto.Telephone;
+                client.Email = dto.Email;
+                client.Adresse = dto.Adresse;
+                client.Civilite = dto.Civilite;
+                client.EtatCivil = dto.EtatCivil;
+                client.Residence = dto.Residence;
+                client.SituationProfessionnelle = dto.SituationProfessionnelle;
+                client.NiveauEducation = dto.NiveauEducation;
+                client.NombreEnfants = dto.NombreEnfants;
+                client.RevenuMensuel = dto.RevenuMensuel;
+
+
+                bool isUpdated = await _clientService.UpdateClientInfoAsync(client.Id, client);
+
+                if (!isUpdated)
+                {
+                    return NotFound(new { message = "Client non trouvé" });
+                }
+
+                return Ok(new { message = "Informations mises à jour avec succès !" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la mise à jour");
+                return StatusCode(500, new { message = "Erreur interne" });
+            }
+        }
+
 
     }
 }

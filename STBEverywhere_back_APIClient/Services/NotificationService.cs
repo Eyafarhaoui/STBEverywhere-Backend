@@ -1,6 +1,7 @@
 ﻿using STBEverywhere_Back_SharedModels.Data;
 using Microsoft.EntityFrameworkCore;
 using STBEverywhere_Back_SharedModels.Models;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace STBEverywhere_back_APIClient.Services
 {
@@ -19,8 +20,19 @@ namespace STBEverywhere_back_APIClient.Services
         {
             try
             {
-                var title = $"Mise à jour de votre pack {packType}";
-                var message = $"Le statut de votre pack {packType} a changé: {newStatus}";
+                var title = $"";
+                var message = $"";
+
+                if (packType == "Elyssa"|| packType == "Student         ")
+                {
+                    title = $"Mise à jour de votre  demande sur le pack {packType}";
+                    message = $" votre demande sur le pack {packType} a été : {newStatus}";
+                }
+                else if (packType == "Reclamtion")
+                {
+                    title = $"Mise à jour de votre réclamation";
+                    message = $"vous avez recu une reponse sur votre reclamation";
+                }
 
                 var notification = new NotificationPack
                 {
@@ -28,7 +40,7 @@ namespace STBEverywhere_back_APIClient.Services
                     Title = title,
                     Message = message,
                     IsRead = false,
-                    NotificationType = "PackStatusChange",
+                    NotificationType = "StatusChange",
                     RelatedPackId = packId,
                     CreatedAt = DateTime.UtcNow
                 };

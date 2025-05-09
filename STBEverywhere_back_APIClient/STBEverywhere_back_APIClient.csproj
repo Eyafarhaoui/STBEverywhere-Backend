@@ -7,11 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Remove="wwwroot\Images\mahmoud.jpg" />
-    <Content Remove="wwwroot\Images\STBlogo.jpg" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="coverlet.collector" Version="6.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -48,7 +43,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="wwwroot\Images\STBlogo.jpg" />
+    <Folder Include="wwwroot\Images\" />
   </ItemGroup>
 
 

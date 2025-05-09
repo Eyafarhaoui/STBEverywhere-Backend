@@ -16,6 +16,7 @@ using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_Back_SharedModels.Models;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.JsonPatch.Operations;
+using System.Globalization;
 
 namespace STBEverywhere_back_APICarte.Controllers
 {
@@ -30,14 +31,15 @@ namespace STBEverywhere_back_APICarte.Controllers
         private readonly ILogger<CarteService> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IUserRepository _userRepository;
-
+        private readonly ICvvGeneratorService _cvvGeneratorService;
         private readonly ICarteRepository _carteRepository;
 
 
-        public CarteController(ICarteService carteService, ICarteRepository carteRepository,
+        public CarteController(ICarteService carteService, ICarteRepository carteRepository, ICvvGeneratorService cvvGeneratorService,
             IHttpContextAccessor httpContextAccessor, IUserRepository userRepository, HttpClient httpClient, ILogger<CarteService> logger, ApplicationDbContext dbContext)
         {
             _carteService = carteService;
+            _cvvGeneratorService = cvvGeneratorService;
             _httpClient = httpClient;
             _logger = logger;
             _httpContextAccessor = httpContextAccessor;
@@ -45,6 +47,35 @@ namespace STBEverywhere_back_APICarte.Controllers
             _userRepository = userRepository;
             _carteRepository = carteRepository;
         }
+
+        [HttpGet("generate/{numCarte}")]
+       
+        public async Task<IActionResult> GenerateCvv(string numCarte)
+        {
+            try
+            {
+                var carte = await _carteRepository.GetCarteByNumCarteAsync(numCarte);
+                if (carte == null)
+                    return NotFound("Carte introuvable");
+
+                var cvv = _cvvGeneratorService.GenerateSecureCvv(carte.NumCarte, carte.DateExpiration);
+
+                _logger.LogInformation("CVV généré pour la carte {NumCarte}", numCarte);
+
+                return Ok(new
+                {
+                    NumCarte = numCarte,
+                    Cvv = cvv,
+                    ExpirationDate = carte.DateExpiration.ToString("MM/yy")
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la génération du CVV");
+                return StatusCode(500, "Erreur interne du serveur");
+            }
+        }
+
         //API pour recuperer les Carte par RIB Compte se sont les Cartes prepayee
         [HttpGet("rib/{rib}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -662,47 +693,62 @@ namespace STBEverywhere_back_APICarte.Controllers
                 if (carteEmetteur.Compte.ClientId != clientEmetteur.Id)
                     return Unauthorized("Vous n'êtes pas autorisé à utiliser cette carte");
 
-                // 2. Calcul des frais
-                bool memeClient = carteEmetteur.Compte.ClientId == carteRecepteur.Compte.ClientId;
-                decimal frais = memeClient ? 0 : 2.0m;
-                decimal montantTotal = dto.Montant + frais;
+                // 2. Validation de la date d'expiration
+                if (!DateTime.TryParseExact(dto.DateExpiration, "MM/yy",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var clientExpirationDate))
+                {
+                    return BadRequest("Format de date invalide (MM/yy attendu)");
+                }
 
-                // 3. Vérification du solde
-                if ((carteEmetteur.Compte.Solde + carteEmetteur.Compte.DecouvertAutorise) < montantTotal)
+                // Convertir en DateTime complète (dernier jour du mois)
+                var serverExpirationDate = new DateTime(
+                    clientExpirationDate.Year,
+                    clientExpirationDate.Month,
+                    DateTime.DaysInMonth(clientExpirationDate.Year, clientExpirationDate.Month),
+                    23, 59, 59);
+
+                if (carteEmetteur.DateExpiration.ToString("MM/yy") != dto.DateExpiration)
+                {
+                    _logger.LogWarning($"Date expiration invalide. Reçue: {dto.DateExpiration}, Attendue: {carteEmetteur.DateExpiration:MM/yy}");
+                    return BadRequest("Date d'expiration incorrecte");
+                }
+
+                // 3. Validation du CVV
+                bool isCvvValid = _cvvGeneratorService.ValidateCvv(
+                    carteEmetteur.NumCarte,
+                    serverExpirationDate,
+                    dto.Cvv);
+
+                if (!isCvvValid)
+                {
+                    _logger.LogWarning($"CVV invalide pour la carte {carteEmetteur.NumCarte}");
+                    return BadRequest("Code CVV invalide");
+                }
+
+                // 4. Vérification du solde
+                if ((carteEmetteur.Compte.Solde + carteEmetteur.Compte.DecouvertAutorise) < dto.Montant)
+                {
+                    _logger.LogWarning($"Solde insuffisant pour la carte {carteEmetteur.NumCarte}");
                     return BadRequest("Solde insuffisant pour effectuer la recharge");
+                }
 
-                // 4. Création de la recharge
+                // 5. Création de la recharge
                 var recharge = new RechargeCarte
                 {
                     CarteEmetteurNum = dto.CarteEmetteurNum,
                     CarteRecepteurNum = dto.CarteRecepteurNum,
                     Montant = dto.Montant,
-                    DateRecharge = DateTime.UtcNow
+                    DateRecharge = DateTime.UtcNow,
+                    //DateExpirationUsed = dto.DateExpiration // Stockage de la date utilisée (optionnel)
                 };
 
                 _dbContext.RechargesCarte.Add(recharge);
-                await _dbContext.SaveChangesAsync(); // Sauvegarde pour obtenir l'ID
-
-                // 5. Enregistrement des frais si nécessaire
-                if (frais > 0)
-                {
-                    var fraisCarte = new FraisCarte
-                    {
-                        Type = "Recharge",
-                        Date = DateTime.UtcNow,
-                        Montant = frais,
-                        NumCarte = dto.CarteEmetteurNum,
-                        IdsRechargesStr = recharge.Id.ToString() // Stockage de l'ID de recharge
-                    };
-                    _dbContext.FraisCartes.Add(fraisCarte);
-                }
 
                 // 6. Mise à jour des soldes
-                carteEmetteur.Compte.Solde -= montantTotal;
-                carteEmetteur.Solde -= montantTotal;
-
+                carteEmetteur.Compte.Solde -= dto.Montant;
                 carteRecepteur.Compte.Solde += dto.Montant;
-                carteRecepteur.Solde += dto.Montant;
 
                 await _dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -716,9 +762,10 @@ namespace STBEverywhere_back_APICarte.Controllers
                     {
                         RechargeId = recharge.Id,
                         MontantTransfere = dto.Montant,
-                        FraisAppliques = frais,
+                        FraisAppliques = 0,
                         NouveauSoldeEmetteur = carteEmetteur.Compte.Solde,
-                        NouveauSoldeRecepteur = carteRecepteur.Compte.Solde
+                        NouveauSoldeRecepteur = carteRecepteur.Compte.Solde,
+                        DateExpirationValidee = dto.DateExpiration
                     }
                 });
             }
@@ -734,7 +781,6 @@ namespace STBEverywhere_back_APICarte.Controllers
                 });
             }
         }
-
         [HttpGet("historique-recharges")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

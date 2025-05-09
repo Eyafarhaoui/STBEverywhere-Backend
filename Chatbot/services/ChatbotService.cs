@@ -13,6 +13,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace Chatbot.Services
 {
@@ -24,23 +25,19 @@ namespace Chatbot.Services
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly Dictionary<string, string> _languageDetectionKeywords;
         private readonly IMemoryCache _synonymCache;
-        private readonly Dictionary<string, List<string>> _localSynonyms;
         private readonly string _togetherApiKey;
-        private readonly LocalSynonymService _localSynonymService;
 
         public ChatbotService(IIntentRepository repository,
                             ILogger<ChatbotService> logger,
                             HttpClient httpClient,
                             IMemoryCache memoryCache,
-                            IConfiguration configuration,
-                            LocalSynonymService localSynonymService)
+                            IConfiguration configuration)
         {
             _repository = repository;
             _logger = logger;
             _httpClient = httpClient;
             _synonymCache = memoryCache;
             _togetherApiKey = configuration["TogetherAI:ApiKey"];
-            _localSynonymService = localSynonymService;
 
             _jsonOptions = new JsonSerializerOptions
             {
@@ -52,16 +49,6 @@ namespace Chatbot.Services
             {
                 ["fr"] = "le la les un une des je tu il nous vous ils",
                 ["en"] = "the a an i you he she we they"
-            };
-
-            _localSynonyms = new Dictionary<string, List<string>>
-            {
-                ["financement court terme"] = new List<string> { "prêt rapide", "avance immédiate", "crédit express" },
-                ["découvert"] = new List<string> { "avance", "facilité de caisse" },
-                ["prêt logement"] = new List<string> { "crédit immobilier", "emprunt maison" },
-                ["carte bancaire"] = new List<string> { "carte de crédit", "carte Visa", "carte Mastercard" },
-                ["virement"] = new List<string> { "transfert", "versement" },
-                ["compte"] = new List<string> { "dépôt", "livret" }
             };
         }
 
@@ -141,21 +128,17 @@ namespace Chatbot.Services
             if (string.IsNullOrWhiteSpace(text))
                 return string.Empty;
 
-            // Supprimer la ponctuation et normaliser les espaces
             var normalized = Regex.Replace(text.ToLowerInvariant(), @"[^\w\s]", " ")
                                 .Replace("\n", " ")
                                 .Replace("\r", " ")
                                 .Trim();
 
-            // Supprimer les espaces multiples
             normalized = Regex.Replace(normalized, @"\s+", " ");
-
             return normalized;
         }
 
         private bool IsExactMatch(string userMessage, string pattern)
         {
-            // Vérifie si le pattern est contenu dans le message ou vice versa
             return userMessage.Contains(pattern) || pattern.Contains(userMessage);
         }
 
@@ -164,11 +147,9 @@ namespace Chatbot.Services
             var userWords = userMessage.Split(' ');
             var patternWords = pattern.Split(' ');
 
-            // Score basé sur le nombre de mots du pattern présents dans le message
             var matchedWords = patternWords.Count(pw => userWords.Contains(pw));
             var ratio = (double)matchedWords / patternWords.Length;
 
-            // Donne plus de poids aux patterns plus longs
             return ratio > 0.5 ? ratio * patternWords.Length * 0.5 : 0;
         }
 
@@ -176,21 +157,13 @@ namespace Chatbot.Services
         {
             try
             {
-                // 1. Vérification des synonymes locaux
-                var localSynonyms = GetLocalSynonyms(pattern);
-                if (localSynonyms.Any(s => userMessage.Contains(s)))
+                // Utilisation directe de ConceptNet pour les synonymes
+                var synonyms = await GetConceptNetSynonymsAsync(pattern, language);
+                if (synonyms.Any(s => userMessage.Contains(s)))
                 {
                     return 1.0;
                 }
 
-                // 2. Vérification des synonymes externes
-                var externalSynonyms = await GetSynonymsAsync(pattern, language);
-                if (externalSynonyms.Any(s => userMessage.Contains(s)))
-                {
-                    return 1.0;
-                }
-
-                // 3. Calcul de similarité textuelle (Jaro-Winkler)
                 var similarity = CalculateJaroWinklerSimilarity(userMessage, pattern);
                 return similarity > 0.85 ? similarity * 1.5 : 0;
             }
@@ -200,9 +173,41 @@ namespace Chatbot.Services
             }
         }
 
+        private async Task<List<string>> GetConceptNetSynonymsAsync(string term, string language)
+        {
+            if (string.IsNullOrWhiteSpace(term) || language != "fr")
+                return new List<string>();
+
+            if (_synonymCache.TryGetValue(term, out List<string> cachedSynonyms))
+                return cachedSynonyms;
+
+            try
+            {
+                var url = $"https://api.conceptnet.io/query?rel=/r/Synonym&node=/c/{language}/{term}&limit=10";
+                var response = await _httpClient.GetStringAsync(url);
+                var data = JObject.Parse(response);
+                var synonyms = new List<string>();
+
+                foreach (var edge in data["edges"])
+                {
+                    var word = edge["end"]["term"]?.ToString()?.Split('/')?.Last();
+                    if (!string.IsNullOrWhiteSpace(word) && !word.Equals(term, StringComparison.OrdinalIgnoreCase))
+                        synonyms.Add(word);
+                }
+
+                var distinctSynonyms = synonyms.Distinct().ToList();
+                _synonymCache.Set(term, distinctSynonyms, TimeSpan.FromHours(1));
+                return distinctSynonyms;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur ConceptNet pour '{term}'");
+                return new List<string>();
+            }
+        }
+
         private double CalculateJaroWinklerSimilarity(string a, string b)
         {
-            // Implémentation simplifiée de la distance de Jaro-Winkler
             if (a == b) return 1.0;
 
             int maxLen = Math.Max(a.Length, b.Length);
@@ -244,7 +249,6 @@ namespace Chatbot.Services
                          (double)matches / b.Length +
                          (double)(matches - transpositions / 2) / matches) / 3;
 
-            // Facteur de préfixe (Winkler)
             int prefixLength = 0;
             int maxPrefix = Math.Min(4, Math.Min(a.Length, b.Length));
             while (prefixLength < maxPrefix && a[prefixLength] == b[prefixLength])
@@ -283,7 +287,7 @@ namespace Chatbot.Services
                             content = userMessage
                         }
                     },
-                    temperature = 0.3, // Plus bas pour des réponses plus factuelles
+                    temperature = 0.3,
                     max_tokens = 500
                 };
 
@@ -331,56 +335,6 @@ namespace Chatbot.Services
             return frenchCount >= englishCount ? "fr" : "en";
         }
 
-        private async Task<List<string>> GetSynonymsAsync(string term, string language)
-        {
-            if (string.IsNullOrWhiteSpace(term))
-                return new List<string>();
-
-            if (_synonymCache.TryGetValue(term, out List<string> cachedSynonyms))
-                return cachedSynonyms;
-
-            try
-            {
-                List<string> synonyms = language == "en"
-                    ? await GetEnglishSynonyms(term)
-                    : _localSynonymService.GetSynonyms(term);
-
-                var localSynonyms = GetLocalSynonyms(term);
-                synonyms = synonyms.Union(localSynonyms).ToList();
-
-                _synonymCache.Set(term, synonyms, TimeSpan.FromHours(1));
-                return synonyms;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Erreur lors de la récupération des synonymes pour '{term}'");
-                return GetLocalSynonyms(term);
-            }
-        }
-
-        private async Task<List<string>> GetEnglishSynonyms(string term)
-        {
-            var url = $"https://api.datamuse.com/words?rel_syn={Uri.EscapeDataString(term)}&max=5";
-            using var response = await _httpClient.GetAsync(url);
-
-            if (!response.IsSuccessStatusCode)
-                return new List<string>();
-
-            var json = await response.Content.ReadAsStringAsync();
-            var results = JsonSerializer.Deserialize<List<DatamuseResponse>>(json, _jsonOptions);
-
-            return results?
-                .Where(r => !string.IsNullOrWhiteSpace(r.Word))
-                .Select(r => r.Word.ToLowerInvariant().Trim())
-                .Distinct()
-                .ToList() ?? new List<string>();
-        }
-
-        private List<string> GetLocalSynonyms(string term)
-        {
-            return _localSynonyms.TryGetValue(term, out var synonyms) ? synonyms : new List<string>();
-        }
-
         private string FormatResponse(List<string> responses)
         {
             return string.Join("\n", responses?
@@ -411,8 +365,6 @@ namespace Chatbot.Services
         {
             _httpClient?.Dispose();
         }
-
-        private record DatamuseResponse(string Word, int Score);
 
         private class TogetherAIResponse
         {

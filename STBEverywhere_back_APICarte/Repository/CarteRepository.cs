@@ -89,10 +89,7 @@ namespace STBEverywhere_back_APICarte.Repository
             return await _context.Cartes.AnyAsync(c => c.CodePIN == pin);
         }
 
-        public async Task<bool> CvvExistsAsync(String cvv)
-        {
-            return await _context.Cartes.AnyAsync(c => c.CodeCVV == cvv);
-        }
+       
 
         public async Task<bool> SaveChangesAsync()
         {
