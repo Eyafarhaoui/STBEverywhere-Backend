@@ -177,10 +177,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             _logger.LogInformation("Getting all comptes");
             return Ok(comptes);
         }
-
-
-
-        //liste des comptes qui peuvent effectuer des virements (tous les comptes sauf compte epargne) 
+        //liste des comptes qui peuvent effectuer des virements vers d'autres comptes comptes  (tous les comptes sauf compte epargne) 
 
         [HttpGet("listecompteVirement")]
 
@@ -195,6 +192,33 @@ namespace STBEverywhere_back_APICompte.Controllers
             var clientId = client.Id;
 
             var comptes = await _compteService.GetAllAsync(c => c.ClientId == clientId && c.Statut != "Clôturé" && c.Statut != "desactive" && c.Type.ToLower() != "epargne" && c.Type != "Technique");
+
+
+            if (comptes == null || !comptes.Any())
+            {
+                return NotFound(new { message = "Aucun compte actif trouvé pour vous." });
+            }
+
+            _logger.LogInformation("Récupération des comptes actifs non épargne réussie.");
+            return Ok(comptes);
+        }
+
+
+        //liste des comptes qui peuvent effectuer des virements vers mes comptes  
+
+        [HttpGet("listecompteVirementMesComptes")]
+
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetComptesVirementMesComptesByClientId()
+        {
+            var userId = GetUserIdFromToken();
+            var client = await _userRepository.GetClientByUserIdAsync(userId);
+            var clientId = client.Id;
+
+            var comptes = await _compteService.GetAllAsync(c => c.ClientId == clientId && c.Statut != "Clôturé" && c.Statut != "desactive"  && c.Type != "Technique");
 
 
             if (comptes == null || !comptes.Any())

@@ -44,6 +44,8 @@ namespace STBEverywhere_Back_SharedModels.Data
         public DbSet<HistoriqueSolde> HistoriquesSoldes { get; set; }
         public DbSet<Convention> Conventions { get; set; }
         public DbSet<ModificationRequest> ModificationRequests { get; set; }
+        public DbSet<InteretJournalier> InteretsJournaliers { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

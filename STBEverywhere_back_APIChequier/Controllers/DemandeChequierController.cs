@@ -16,6 +16,10 @@ using STBEverywhere_Back_SharedModels;
 using System.Text;
 using STBEverywhere_back_APIChequier.Repository;
 using Newtonsoft.Json;
+using Org.BouncyCastle.Asn1.Cmp;
+using Org.BouncyCastle.Asn1.Crmf;
+using ZstdSharp.Unsafe;
+using RestSharp;
 namespace STBEverywhere_back_APIChequier.Controllers
 {
     [Route("api/DemandeChequierApi")]
@@ -251,11 +255,11 @@ namespace STBEverywhere_back_APIChequier.Controllers
             }
 
             // Calcul des frais
-            decimal fraisChequier = 5.000m;
+           // decimal fraisChequier = 5.000m;
             decimal fraisEnvoi = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
-            decimal totalFrais = fraisChequier + fraisEnvoi;
+            //decimal totalFrais = fraisChequier + fraisEnvoi;
 
-            if (compte.Solde < totalFrais)
+            if (compte.Solde < fraisEnvoi)
             {
                 return BadRequest(new
                 {
@@ -267,7 +271,7 @@ namespace STBEverywhere_back_APIChequier.Controllers
             //F3 Formate le montant avec 3 décimales et remplace la virgule par un point pour l'URL
 
             var debitResponse = await _httpClient.PutAsync(
-                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{totalFrais.ToString("F3").Replace(",", ".")}",
+                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{fraisEnvoi.ToString("F3").Replace(",", ".")}",
                 null);
 
             if (!debitResponse.IsSuccessStatusCode)
@@ -335,13 +339,13 @@ namespace STBEverywhere_back_APIChequier.Controllers
             // Ajout dans la table des frais
             var fraisList = new List<FraisChequier>
     {
-        new FraisChequier
+        /*new FraisChequier
         {
             type = "Frais chéquier barré",
             Date = DateTime.UtcNow,
             Montant = fraisChequier,
             IdDemande = demande.IdDemande
-        }
+        }*/
 
     };
 
@@ -361,114 +365,65 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 await _fraisRepository.AddAsync(frais);
             }
             await _fraisRepository.SaveAsync();
-            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
-               $"Votre demande a bien été enregistrée et est en cours de traitement.");
-            return Ok(new { message = "Demande de chéquier enregistrée et frais débités avec succès." });
+            //await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
+            //  $"Votre demande a bien été enregistrée et est en cours de traitement.");
+            //return Ok(new { message = "Demande de chéquier enregistrée et frais débités avec succès." });
 
-           
+
+            /*var emailBody = new
+            {
+                from = "stb.digital@stb.com.tn",
+                to = demande.Email, // Dynamique comme dans votre 1er exemple
+                subject = "Demande de chéquier non barré reçue",
+                content = "<h5>Votre demande a bien été enregistrée et est en cours de traitement.</h5>"
+            };
+
+            var options = new RestClientOptions("https://openbank.stb.com.tn")
+            {
+                MaxTimeout = -1,
+            };
+            var client = new RestClient(options);
+            var request = new RestRequest("/api/students/subscription/sendmail", Method.Post);
+            request.AddHeader("Ocp-Apim-Subscription-Key", "55c87b41825244d7b0299f66e3bda7f6");
+            request.AddHeader("Content-Type", "application/json");
+            request.AddJsonBody(emailBody); // Sérialise l'objet en JSON automatiquement
+
+            RestResponse response1 = await client.ExecuteAsync(request);
+
+            // Vérifiez le succès de la requête ici si nécessaire
+            if (response1.IsSuccessful)
+            {
+                return Ok(new { message = "Demande de chéquier enregistrée et email envoyé avec succès." });
+            }
+            else
+            {
+                return StatusCode((int)response.StatusCode, new { error = "Erreur lors de l'envoi de l'email." });
+            }*/
+
+            // Appel HTTP à l'API EmailController
+            var emailRequest = new
+            {
+                to = demande.Email,
+                subject = "Demande de chéquier  barré reçue",
+                content = "<h5>Votre demande a bien été enregistrée et est en cours de traitement.</h5>"
+            };
+
+            var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
+
+            if (emailResponse.IsSuccessStatusCode)
+            {
+                return Ok(new { message = "Demande de chéquier enregistrée et email envoyé avec succès." });
+            }
+            else
+            {
+                return StatusCode((int)emailResponse.StatusCode, new { error = "Erreur lors de l'envoi de l'email." });
+            }
+
+
         }
 
 
-        /*
-                [HttpPost("DemandeChequierBarre")]
-                [ProducesResponseType(StatusCodes.Status200OK)]
-                [ProducesResponseType(StatusCodes.Status404NotFound)]
-                [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-                public async Task<IActionResult> DemanderChequierBarre([FromBody] DemandeChequierDTO demandeDto)
-                {
-                    if (demandeDto == null || string.IsNullOrWhiteSpace(demandeDto.RibCompte))
-                    {
-                        return BadRequest("Les informations de la demande sont invalides.");
-                    }
-
-                    bool hasPendingRequest = await _repository.HasDemandeEncours(demandeDto.RibCompte);
-                    if (hasPendingRequest)
-                    {
-                        return BadRequest("Une demande de chéquier est déjà en cours de préparation pour ce compte.");
-                    }
-
-                    bool isEpargne = await _repository.IsCompteEpargne(demandeDto.RibCompte);
-                    if (isEpargne)
-                    {
-                        return BadRequest("Les comptes de type épargne ne peuvent pas faire de demande de chéquier.");
-                    }
-
-                    // Récupération du compte
-                    var response = await _httpClient.GetAsync($"https://localhost:port/api/compte/GetByRIB/{demandeDto.RibCompte}");
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        return NotFound("Compte introuvable via le service Compte.");
-                    }
-
-                    var content = await response.Content.ReadAsStringAsync();
-                    var comptes = JsonConvert.DeserializeObject<List<Compte>>(content);
-                    var compte = comptes.FirstOrDefault();
-
-                    if (compte == null)
-                    {
-                        return NotFound("Compte non trouvé.");
-                    }
-
-
-                    // Calcul des frais
-                    decimal fraisChequier = 5.000m;
-                    decimal fraisEnvoi = demandeDto.ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
-                    decimal totalFrais = fraisChequier + fraisEnvoi;
-
-                    if (compte.Solde < totalFrais)
-                    {
-                        return BadRequest("Solde insuffisant pour couvrir les frais.");
-                    }
-
-                    // Débiter le compte
-                    compte.Solde -= totalFrais;
-
-                    // Créer la demande
-                    var demande = new DemandeChequier
-                    {
-                        RibCompte = demandeDto.RibCompte,
-                        DateDemande = DateTime.UtcNow
-                        // autres champs à mapper
-                    };
-                    await _repository.AddAsync(demande);
-                    await _repository.SaveAsync();
-
-                    // Ajouter les frais
-                    var fraisList = new List<FraisChequier>
-            {
-                new FraisChequier
-                {
-                    type = "Frais chéquier barre",
-                    Date = DateTime.UtcNow,
-                    Montant = fraisChequier,
-                    IdDemande = demande.IdDemande.ToString()
-                }
-            };
-
-                    if (demandeDto.ModeLivraison== ModeLivraison.EnvoiRecommande)
-                    {
-                        fraisList.Add(new FraisChequier
-                        {
-                            type = "Frais envoi recommandé",
-                            Date = DateTime.UtcNow,
-                            Montant = fraisEnvoi,
-                            IdDemande = demande.IdDemande.ToString()
-                        });
-                    }
-
-                    foreach (var frais in fraisList)
-                    {
-                        await _fraisRepository.AddAsync(frais); // à implémenter dans un repository
-                    }
-
-                    await _compteRepository.UpdateAsync(compte);
-                    await _compteRepository.SaveAsync();
-
-                    return Ok("Demande de chéquier enregistrée et frais débités avec succès.");
-                }
-                */
-
+        
         [HttpPost("DemandeChequierNonBarre")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -525,11 +480,11 @@ namespace STBEverywhere_back_APIChequier.Controllers
             int totalFeuillesEmises = await _repository.CountFeuillesByRib(demandeDto.RibCompte);
 
             // Calcul des frais
-            decimal fraisChequier = 6.000m;
+            //decimal fraisChequier = 6.000m;
             decimal fraisEnvoi = demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande ? 1.200m : 0m;
-            decimal totalFrais = fraisChequier + fraisEnvoi;
+            //decimal totalFrais = fraisChequier + fraisEnvoi;
 
-            if (compte.Solde < totalFrais)
+            if (compte.Solde < fraisEnvoi)
                 return BadRequest(new
                 {
                     message = "Solde insuffisant pour couvrir les frais."
@@ -537,7 +492,7 @@ namespace STBEverywhere_back_APIChequier.Controllers
 
             // Débit du compte via HTTP
             var debitResponse = await _httpClient.PutAsync(
-                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{totalFrais.ToString("F3").Replace(",", ".")}",
+                $"http://localhost:5185/api/compte/Debiter/{demandeDto.RibCompte}/{fraisEnvoi.ToString("F3").Replace(",", ".")}",
                 null);
 
             if (!debitResponse.IsSuccessStatusCode)
@@ -588,13 +543,13 @@ namespace STBEverywhere_back_APIChequier.Controllers
             // Enregistrement des frais
             var fraisList = new List<FraisChequier>
     {
-        new FraisChequier
+        /*new FraisChequier
         {
             type = "Frais chéquier non barré",
             Date = DateTime.UtcNow,
             Montant = fraisChequier,
             IdDemande = demande.IdDemande
-        }
+        }*/
     };
 
             if (demandeDto.ModeLivraison == ModeLivraison.EnvoiRecommande)
@@ -613,11 +568,28 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 await _fraisRepository.AddAsync(frais);
             }
             await _fraisRepository.SaveAsync();
+            var emailRequest = new
+            {
+                to = demande.Email,
+                subject = "Demande de chéquier non barré reçue",
+                content = "<h5>Votre demande a bien été enregistrée et est en cours de traitement.</h5>"
+            };
+
+            var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
+
+            if (emailResponse.IsSuccessStatusCode)
+            {
+                return Ok(new { message = "Demande de chéquier enregistrée et email envoyé avec succès." });
+            }
+            else
+            {
+                return StatusCode((int)emailResponse.StatusCode, new { error = "Erreur lors de l'envoi de l'email." });
+            }
 
 
             // Email de confirmation
-            await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
-                $"Votre demande a bien été enregistrée et est en cours de traitement.");
+            /* await _emailService.SendEmailAsync(demande.Email, "Demande de chéquier non barré reçue",
+                 $"Votre demande a bien été enregistrée et est en cours de traitement.");*/
 
             return Ok(new { message = "Demande de chéquier non barré soumise avec succès.", demandeId = demande.IdDemande });
 

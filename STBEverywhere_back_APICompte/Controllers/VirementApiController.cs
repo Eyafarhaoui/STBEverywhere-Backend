@@ -18,6 +18,9 @@ using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_back_APIClient.Repositories;
 using Microsoft.EntityFrameworkCore;
 using System;
+using SixLabors.ImageSharp.ColorSpaces;
+using RestSharp;
+using System.Net.Http;
 //using STBEverywhere_back_APIClient.Repositories;
 
 
@@ -37,10 +40,12 @@ namespace STBEverywhere_back_APICompte.Controllers
         private readonly IMapper _mapper;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IWebHostEnvironment _webHostEnvironment;
+        private readonly DecouvertTrackerService _DecouvertTrackerService;
+        private readonly HttpClient _httpClient;
         //private readonly IVirementService _virementService;
 
 
-        public VirementApiController(/*VirementService virementService,*/ IWebHostEnvironment webHostEnvironment, IFraisCompteRepository dbFraisCompte, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository,ICompteRepository dbCompte, IVirementRepository dbVirement, IBeneficiaireRepository dbBeneficiaire, ILogger<VirementApiController> logger, IMapper mapper)
+        public VirementApiController(HttpClient httpClient, DecouvertTrackerService DecouvertTrackerService,IWebHostEnvironment webHostEnvironment, IFraisCompteRepository dbFraisCompte, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository,ICompteRepository dbCompte, IVirementRepository dbVirement, IBeneficiaireRepository dbBeneficiaire, ILogger<VirementApiController> logger, IMapper mapper)
         {
             _dbCompte = dbCompte;
             _dbFraisCompte = dbFraisCompte;
@@ -51,6 +56,8 @@ namespace STBEverywhere_back_APICompte.Controllers
             _userRepository = userRepository;
             _webHostEnvironment = webHostEnvironment;
             _httpContextAccessor = httpContextAccessor;
+            _DecouvertTrackerService = DecouvertTrackerService;
+            _httpClient = httpClient;
             // _virementService = virementService;
 
         }
@@ -65,45 +72,50 @@ namespace STBEverywhere_back_APICompte.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-
-
         public async Task<IActionResult> Virement([FromBody] VirementUnitaireDto virementDto)
         {
             _logger.LogInformation("Requête reçue pour un virement. Données : {@virementDto}", virementDto);
 
             var userId = GetUserIdFromToken();
-           // var userId = GetTestUserId(); // Au lieu de GetUserIdFromToken()
+            _logger.LogInformation("UserId extrait du token : {userId}", userId);
+
             var client = await _userRepository.GetClientByUserIdAsync(userId);
+            _logger.LogInformation("Client récupéré : {@client}", client);
 
             var clientId = client?.Id;
 
             if (clientId == null)
             {
+                _logger.LogWarning("Utilisateur non authentifié.");
                 return Unauthorized(new { message = "Utilisateur non authentifié" });
             }
 
             if (virementDto == null || string.IsNullOrEmpty(virementDto.RIB_Emetteur) || virementDto.Montant <= 0)
             {
+                _logger.LogWarning("Champs requis manquants ou montant invalide.");
                 return BadRequest(new { message = "RIB émetteur et montant sont obligatoires." });
             }
 
             var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Emetteur)).FirstOrDefault();
             if (emetteur == null)
             {
+                _logger.LogWarning("Compte émetteur introuvable pour le RIB : {RIB}", virementDto.RIB_Emetteur);
                 return NotFound(new { message = "Compte émetteur introuvable." });
             }
 
-            Compte recepteur;
+            Compte recepteur = null; 
             if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
             {
                 if (virementDto.IdBeneficiaire == null)
                 {
+                    _logger.LogWarning("ID bénéficiaire requis mais non fourni.");
                     return BadRequest(new { message = "ID bénéficiaire requis pour ce type de virement." });
                 }
 
                 var beneficiaire = await _dbBeneficiaire.GetByIdAsync(virementDto.IdBeneficiaire.Value);
                 if (beneficiaire == null)
                 {
+                    _logger.LogWarning("Bénéficiaire introuvable pour l'ID : {IdBeneficiaire}", virementDto.IdBeneficiaire);
                     return NotFound(new { message = "Bénéficiaire introuvable." });
                 }
 
@@ -111,49 +123,63 @@ namespace STBEverywhere_back_APICompte.Controllers
             }
             else if (virementDto.TypeVirement == "VirementUnitaireVersMescomptes")
             {
-                if (string.IsNullOrEmpty(virementDto.RIB_Recepteur))
+                if (string.IsNullOrEmpty(virementDto.RIB_Recepteur)) // Vérifier que le RIB du récepteur est fourni dans la requête
                 {
+                    _logger.LogWarning("RIB récepteur requis mais non fourni.");
                     return BadRequest(new { message = "RIB récepteur requis pour ce type de virement." });
                 }
 
                 recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Recepteur)).FirstOrDefault();
+                if (recepteur == null)
+                {
+                    _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIBRecepteur}", virementDto.RIB_Recepteur);
+                    return NotFound(new { message = "Compte récepteur introuvable." });
+                }
             }
             else
             {
+                _logger.LogWarning("Type de virement non reconnu : {TypeVirement}", virementDto.TypeVirement);
                 return BadRequest(new { message = "Type de virement non reconnu." });
             }
 
             if (recepteur == null)
             {
+                _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIB}", recepteur.RIB);
                 return NotFound(new { message = "Compte récepteur introuvable." });
             }
+            decimal COMMISSION = 1.500m;
+            decimal TVA = 0.285m;
+            decimal montantTotal = virementDto.Montant +
+                (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
 
-            decimal frais = 0.5m;
-            decimal montantTotal = virementDto.Montant + (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? frais : 0);
 
             // Vérification du solde disponible (incluant le découvert)
             if (emetteur.SoldeDisponible < montantTotal)
             {
+                _logger.LogWarning("Solde insuffisant. Solde disponible : {SoldeDisponible}, MontantTotal : {MontantTotal}", emetteur.SoldeDisponible, montantTotal);
                 return BadRequest(new { message = "Solde insuffisant, y compris avec le découvert autorisé." });
+            }
+            if (emetteur.Type == "epargne" && emetteur.Solde - montantTotal < 10.000m)
+            {
+                _logger.LogWarning("Tentative de virement qui ferait descendre le solde sous 10,000 TND.");
+                return BadRequest(new { message = "Opération non autorisée : le solde disponible ne peut être inférieur au solde minimum réglementaire de 10,000 TND exigé pour les comptes épargne." });
             }
 
             await _dbVirement.BeginTransactionAsync();
             try
             {
-                // Débit du compte émetteur
                 emetteur.Solde -= montantTotal;
 
-                //  Mise à jour du découvert autorisé si nécessaire
                 if (emetteur.Solde < 0)
                 {
-                    emetteur.DecouvertAutorise += emetteur.Solde; // Réduit le découvert autorisé de la partie négative
+                    emetteur.DecouvertAutorise += emetteur.Solde;
                 }
 
-                // Crédit du compte récepteur
                 recepteur.Solde += virementDto.Montant;
 
                 await _dbCompte.UpdateAsync(emetteur);
                 await _dbCompte.UpdateAsync(recepteur);
+                await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
 
                 var virement = new Virement
                 {
@@ -175,8 +201,16 @@ namespace STBEverywhere_back_APICompte.Controllers
                     {
                         RIB = virementDto.RIB_Emetteur,
                         IdsVirements = new List<int> { virement.Id },
-                        Montant = frais,
-                        type = "TVA sur commision virement émis",
+                        Montant = COMMISSION,
+                        type = "COMMISSION VIREMENT ÉMIS EN DINARS",
+                        Date = DateTime.Now
+                    };
+                    var TVAEmetteur = new FraisCompte
+                    {
+                        RIB = virementDto.RIB_Emetteur,
+                        IdsVirements = new List<int> { virement.Id },
+                        Montant = TVA,
+                        type = "TVA SUR COMMISSION VIREMENT ÉMIS",
                         Date = DateTime.Now
                     };
 
@@ -184,8 +218,17 @@ namespace STBEverywhere_back_APICompte.Controllers
                     {
                         RIB = recepteur.RIB,
                         IdsVirements = new List<int> { virement.Id },
-                        Montant = frais,
-                        type = "TVA sur commision virement reçu",
+                        Montant = COMMISSION,
+                        type = "COMMISSION VIREMENT Reçu EN DINARS ",
+                        Date = DateTime.Now
+                    };
+
+                    var TVARecepteur = new FraisCompte
+                    {
+                        RIB = recepteur.RIB,
+                        IdsVirements = new List<int> { virement.Id },
+                        Montant = TVA,
+                        type = "TVA SUR COMMISSION VIREMENT Reçu EN DINARS  ",
                         Date = DateTime.Now
                     };
 
@@ -194,8 +237,6 @@ namespace STBEverywhere_back_APICompte.Controllers
                 }
 
                 await _dbVirement.CommitTransactionAsync();
-
-                return Ok(new { message = "Virement effectué avec succès." });
             }
             catch (Exception ex)
             {
@@ -203,7 +244,81 @@ namespace STBEverywhere_back_APICompte.Controllers
                 _logger.LogError(ex, "Erreur lors du virement");
                 return StatusCode(500, new { message = "Erreur lors du traitement du virement." });
             }
+
+            Console.WriteLine("RIB_Emetteur: " + virementDto.RIB_Emetteur);
+            var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(virementDto.RIB_Emetteur);
+            Console.WriteLine("soldeEmetteur: " + soldeEmetteur);
+
+            Console.WriteLine("rib recepteur: " + recepteur.RIB);
+            var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(recepteur.RIB);
+            Console.WriteLine("soldeRecepteur: " + soldeRecepteur);
+
+            var DateVirement = DateTime.Now.ToString("dd/MM");
+            var telephoneEmetteur = client.Telephone;
+            // Ajout des logs pour le debug
+            _logger.LogInformation("Recherche de l'idClientRecepteur pour le RIB : {recepteur.RIB}", recepteur.RIB);
+            var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(recepteur.RIB);
+            _logger.LogInformation("idClientRecepteur: {idClientRecepteur}", idClientRecepteur);
+
+            var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+            _logger.LogInformation("Appel API URL : {apiurl}", apiurl);
+
+            var reponse = await _httpClient.GetAsync(apiurl);
+
+            if (!reponse.IsSuccessStatusCode)
+            {
+                _logger.LogError("Erreur lors de l'appel à l'API de client pour le récepteur, statut : {StatusCode}", reponse.StatusCode);
+                return StatusCode(500, new { message = "Erreur lors de l'appel API pour obtenir les informations du récepteur." });
+            }
+
+            var clientrecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+            var telephoneRecepteur = clientrecepteur.Telephone;
+
+            // SMS pour Emetteur
+            var smsRequestEmetteur = new
+            {
+                mobile = telephoneEmetteur,
+                message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {DateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{montantTotal} TND"
+            };
+
+            // SMS pour Recepteur
+            var smsRequestRecepteur = new
+            {
+                mobile = telephoneRecepteur,
+                message = $"Le solde de votre compte {recepteur.RIB} au {DateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu: +{virementDto.Montant} TND"
+
+        };
+
+            var options = new RestClientOptions("http://localhost:5203")
+            {
+                MaxTimeout = -1,
+            };
+            var clientrest = new RestClient(options);
+
+            var requestEmetteur = new RestRequest("/Send", Method.Post);
+            requestEmetteur.AddHeader("Content-Type", "application/json");
+            requestEmetteur.AddJsonBody(smsRequestEmetteur);
+            RestResponse responseEmetteur = await clientrest.ExecuteAsync(requestEmetteur);
+
+            var requestRecepteur = new RestRequest("/Send", Method.Post);
+            requestRecepteur.AddHeader("Content-Type", "application/json");
+            requestRecepteur.AddJsonBody(smsRequestRecepteur);
+            RestResponse responseRecepteur = await clientrest.ExecuteAsync(requestRecepteur);
+
+            if (responseEmetteur.IsSuccessful && responseRecepteur.IsSuccessful)
+            {
+                return Ok(new { message = "Virement effectué et SMS envoyés avec succès." });
+            }
+            else
+            {
+                return StatusCode(500, new { error = "Erreur lors de l'envoi des SMS." });
+            }
+
         }
+
+
+
+
 
 
         /* public async Task<IActionResult> Virement([FromBody] VirementUnitaireDto virementDto)
@@ -498,6 +613,16 @@ namespace STBEverywhere_back_APICompte.Controllers
 
             // Appel direct du traitement de virement
             return await VirementDeMasseTraitement(filePath);
+
+
+
+
+
+
+
+
+
+
         }
 
         /*
@@ -525,8 +650,11 @@ namespace STBEverywhere_back_APICompte.Controllers
         private async Task<IActionResult> VirementDeMasseParFormulaire(VirementMasseFormulaireDto dto)
         {
             var virementsEffectués = new List<Virement>();
+            var userId = GetUserIdFromToken();
+            
+            var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-            // Récupération du compte émetteur
+            //  compte émetteur
             var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == dto.RibEmetteur)).FirstOrDefault();
             if (emetteur == null)
             {
@@ -588,10 +716,12 @@ namespace STBEverywhere_back_APICompte.Controllers
                     if (emetteur.Solde < 0)
                     {
                         emetteur.DecouvertAutorise += emetteur.Solde; // Réduction du découvert autorisé
+
                     }
 
                     await _dbCompte.UpdateAsync(emetteur);
                     await _dbCompte.UpdateAsync(recepteur);
+                    await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
 
                     // Création du virement
                     var virement = new Virement
@@ -625,6 +755,67 @@ namespace STBEverywhere_back_APICompte.Controllers
                 await _dbFraisCompte.CreateAsync(fraisCompte);
 
                 await _dbVirement.CommitTransactionAsync();
+
+                _logger.LogInformation("Virement en masse réussi. Envoi des SMS en cours...");
+
+                // Récupérer le solde mis à jour de l'émetteur
+                var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(dto.RibEmetteur);
+                var dateVirement = DateTime.Now.ToString("dd/MM");
+                var telephoneEmetteur = client.Telephone;
+                var montantTotal = frais + totalVirement;
+                // Préparer le SMS pour l'émetteur
+                var smsRequestEmetteur = new
+                {
+                    mobile = telephoneEmetteur,
+                    message = $"Le solde de votre compte {dto.RibEmetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT DE MASSE ÉMIS: -{montantTotal} TND"
+                };
+
+                // Créer le client REST
+                var options = new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 };
+                var clientrest = new RestClient(options);
+
+                // Envoyer le SMS à l'émetteur
+                var requestEmetteur = new RestRequest("/Send", Method.Post);
+                requestEmetteur.AddHeader("Content-Type", "application/json");
+                requestEmetteur.AddJsonBody(smsRequestEmetteur);
+                await clientrest.ExecuteAsync(requestEmetteur);
+
+                // SMS pour chaque bénéficiaire
+                foreach (var virement in virementsEffectués)
+                {
+                    var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(virement.RIB_Recepteur);
+                    var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+                    var reponse = await _httpClient.GetAsync(apiurl);
+                    var clientRecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+
+                    if (clientRecepteur != null)
+                    {
+                        var telephoneRecepteur = clientRecepteur.Telephone;
+                        var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(virement.RIB_Recepteur);
+
+                        var smsRequestRecepteur = new
+                        {
+                            mobile = telephoneRecepteur,
+                            message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU: +{virement.Montant} TND"
+                        };
+
+                        var requestRecepteur = new RestRequest("/Send", Method.Post);
+                        requestRecepteur.AddHeader("Content-Type", "application/json");
+                        requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                        await clientrest.ExecuteAsync(requestRecepteur);
+                    }
+                }
+                _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
+
+
+
+
+
+
+
+
+
+
                 return Ok(new
                 {
                     message = "Virements enregistrés avec succès.",
@@ -954,6 +1145,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             await _dbVirement.BeginTransactionAsync();
             _logger.LogInformation("Transaction de virement en masse commencée.");
 
+
             try
             {
                 var idsVirements = new List<int>();
@@ -1031,6 +1223,8 @@ namespace STBEverywhere_back_APICompte.Controllers
                     }
 
                     await _dbCompte.UpdateAsync(emetteur);
+                    await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
+
                     await _dbCompte.UpdateAsync(beneficiaire);
 
                     var virement = new Virement
@@ -1068,6 +1262,82 @@ namespace STBEverywhere_back_APICompte.Controllers
                 }
 
                 await _dbVirement.CommitTransactionAsync();
+
+                _logger.LogInformation("Virement en masse réussi. Envoi des SMS en cours...");
+
+                // Récupérer le solde mis à jour de l'émetteur
+                var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(ribEmetteur);
+                var dateVirement = DateTime.Now.ToString("dd/MM");
+                var telephoneEmetteur = client.Telephone;
+                var montantTotalAvecFrais = montantTotal + frais;
+
+                // Préparer le SMS pour l'émetteur
+                var smsRequestEmetteur = new
+                {
+                    mobile = telephoneEmetteur,
+                    message = $"Le solde de votre compte {ribEmetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT DE MASSE ÉMIS: -{montantTotalAvecFrais} TND"
+                };
+
+                // Créer le client REST
+                var options = new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 };
+                var clientrest = new RestClient(options);
+
+                // Envoyer le SMS à l'émetteur
+                var requestEmetteur = new RestRequest("/Send", Method.Post);
+                requestEmetteur.AddHeader("Content-Type", "application/json");
+                requestEmetteur.AddJsonBody(smsRequestEmetteur);
+                await clientrest.ExecuteAsync(requestEmetteur);
+
+                // SMS pour chaque bénéficiaire
+                foreach (var virement in virementsEffectués)
+                {
+                    var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(virement.RIB_Recepteur);
+                    var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+                    var reponse = await _httpClient.GetAsync(apiurl);
+                    var clientRecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+
+                    if (clientRecepteur != null)
+                    {
+                        var telephoneRecepteur = clientRecepteur.Telephone;
+                        var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(virement.RIB_Recepteur);
+
+                        var smsRequestRecepteur = new
+                        {
+                            mobile = telephoneRecepteur,
+                            message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU: +{virement.Montant} TND"
+                        };
+
+                        var requestRecepteur = new RestRequest("/Send", Method.Post);
+                        requestRecepteur.AddHeader("Content-Type", "application/json");
+                        requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                        await clientrest.ExecuteAsync(requestRecepteur);
+                    }
+                }
+
+                _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 _logger.LogInformation("Virement en masse réussi. Total débité : {TotalDebite}, Frais : {Frais}", totalDébité, frais);
 
                 return Ok(new

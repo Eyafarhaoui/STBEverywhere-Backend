@@ -1,10 +1,13 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using STBEverywhere_back_APIChequier.Controllers;
 using STBEverywhere_back_APIChequier.Hubs;
 using STBEverywhere_back_APIChequier.Repository.IRepositoy;
 using STBEverywhere_Back_SharedModels.Data;
 using STBEverywhere_Back_SharedModels.Models;
+using System.Net.Http;
+using System.Text;
 
 namespace STBEverywhere_back_APIChequier.Services
 {
@@ -17,7 +20,8 @@ namespace STBEverywhere_back_APIChequier.Services
         private readonly ILogger<ChequierService> _logger;
         private readonly IChequierRepository _chequierRepository;
         private readonly IEmailLogRepository _emailLogRepository;
-        public ChequierService(IChequierRepository chequierRepository,IEmailLogRepository emailLogRepository, ILogger<ChequierService> logger, ApplicationDbContext context, EmailService emailService, IHubContext<NotificationHub> hubContext)
+        private readonly HttpClient _httpClient;
+        public ChequierService(HttpClient httpClient, IChequierRepository chequierRepository, IEmailLogRepository emailLogRepository, ILogger<ChequierService> logger, ApplicationDbContext context, EmailService emailService, IHubContext<NotificationHub> hubContext)
         {
             _context = context;
             _emailService = emailService;
@@ -25,6 +29,7 @@ namespace STBEverywhere_back_APIChequier.Services
             _logger = logger;
             _chequierRepository = chequierRepository ?? throw new ArgumentNullException(nameof(chequierRepository));
             _emailLogRepository = emailLogRepository ?? throw new ArgumentNullException(nameof(emailLogRepository));
+            _httpClient = httpClient;
 
         }
 
@@ -44,7 +49,7 @@ namespace STBEverywhere_back_APIChequier.Services
                     var sujet = "Acheminement de votre chéquier – Confirmation d’expédition";
                     var contenu = @"Madame, Monsieur,
 
-Nous avons le plaisir de vous informer que votre chéquier a été  a été envoyé par courrier recommandé. Celui-ci est actuellement en cours d’expédition à l’adresse postale communiquée lors de la saisie de votre demande.
+Nous avons le plaisir de vous informer que votre chéquier a été envoyé par courrier recommandé. Celui-ci est actuellement en cours d’expédition à l’adresse postale communiquée lors de la saisie de votre demande.
 
 Nous vous invitons à vous assurer de la disponibilité de cette adresse pour la bonne réception de votre chéquier. En cas de non-réception dans un délai raisonnable, nous vous prions de bien vouloir contacter votre agence.
 
@@ -53,17 +58,33 @@ Nous vous remercions pour la confiance que vous accordez à notre établissement
 Cordialement,
 STB – Département de la Gestion des Moyens de Paiement";
 
-                    await _emailService.LogEmailAsync(chequier.Email, sujet, contenu, chequier.IdDemande, "expedie");
+                    // Appel HTTP vers EmailController
+                    var emailRequest = new
+                    {
+                        to = chequier.Email,
+                        subject = sujet,
+                        content = $"<p>{contenu.Replace("\n", "<br>")}</p>"
+                    };
+
+                    var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
+
+                    if (emailResponse.IsSuccessStatusCode)
+                    {
+                        _logger.LogInformation("Email expédié avec succès à {Email}", chequier.Email);
+                        await _emailService.LogEmailAsync(chequier.Email, sujet, contenu, chequier.IdDemande, "expedie");
+                    }
+                    else
+                    {
+                        _logger.LogError("Erreur lors de l'envoi de l'email à {Email}", chequier.Email);
+                    }
                 }
 
-                //_logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.NumeroChequier, chequier.Email);
                 _logger.LogInformation("Envoi de notification à l'email {Email}.", chequier.Email);
 
-                // Envoyer une notification en temps réel avec SignalR
-                await _hubContext.Clients.User(chequier.Email)
-                    .SendAsync("ReceiveNotification", "Votre chéquier a été expédié et est en cours de livraison.");
+               
             }
         }
+
 
 
 
@@ -100,9 +121,33 @@ STB – Département de la Gestion des Moyens de Paiement";
 
                     if (existingEmailLog == null)
                     {
-                        var contenu = $"Nous vous informons que votre demande de chéquier a été traitée avec succès et que votre chéquier est désormais disponible dans l'agence . Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.\r\n\r\nSi vous avez des questions, n'hésitez pas à nous contacter.\r\nCordialement,\r\nSTB";
+                        var contenu = @"Nous vous informons que votre demande de chéquier a été traitée avec succès 
+et que votre chéquier est désormais disponible dans l'agence. 
+Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.
 
-                        await _emailService.LogEmailAsync(demande.Email, "Votre chéquier est disponile en Agence ", contenu, demande.IdDemande, "cheque dispo");
+Si vous avez des questions, n'hésitez pas à nous contacter.
+Cordialement,
+STB";
+
+                        // Appel HTTP vers EmailController
+                        var emailRequest = new
+                        {
+                            to = demande.Email,
+                            subject = "Votre chéquier est disponible en Agence",
+                            content = $"<p>{contenu.Replace("\n", "<br>")}</p>"
+                        };
+
+                        var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
+
+                        if (emailResponse.IsSuccessStatusCode)
+                        {
+                            _logger.LogInformation("Email envoyé avec succès à {Email}", demande.Email);
+                            await _emailService.LogEmailAsync(demande.Email, "Votre chéquier est disponible en Agence", contenu, demande.IdDemande, "cheque dispo");
+                        }
+                        else
+                        {
+                            _logger.LogError("Erreur lors de l'envoi de l'email à {Email}", demande.Email);
+                        }
                     }
 
                     _logger.LogInformation("Envoi de notification pour le chéquier {ChequierId} à l'email {Email}.", chequier.Id, demande.Email);
@@ -116,7 +161,7 @@ STB – Département de la Gestion des Moyens de Paiement";
                 }
             }
         }
-    
 
-}
     }
+}
+        

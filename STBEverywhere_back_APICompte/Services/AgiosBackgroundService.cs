@@ -1,6 +1,6 @@
-﻿namespace STBEverywhere_back_APICompte.Services
+﻿/*namespace STBEverywhere_back_APICompte.Services
 {
-    public class AgiosBackgroundService : BackgroundService
+   public class AgiosBackgroundService : BackgroundService
     {
 
         private readonly IServiceProvider _services;
@@ -77,3 +77,4 @@
 
     }
 }
+    */

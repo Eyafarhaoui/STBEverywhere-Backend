@@ -112,7 +112,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 {
                     Status = 500,
                     Message = "Erreur interne du serveur",
-                    
+
                 });
             }
         }
@@ -130,7 +130,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             try
             {
                 var client = await _context.Clients
-                    .Include(c => c.User) 
+                    .Include(c => c.User)
                     .FirstOrDefaultAsync(c => c.Id == id);
 
                 if (client == null)
@@ -138,7 +138,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                     return NotFound(new { message = "Client non trouvé" });
                 }
 
-             
+
                 return Ok(client);
             }
             catch (Exception ex)
@@ -221,10 +221,10 @@ namespace STBEverywhere_back_APIClient.Controllers
         [HttpGet("GetClientRevenuMensuel")]
         public async Task<IActionResult> GetClientRevenuMensuel(int userId)
         {
-                var client = await _userRepository.GetClientByUserIdAsync(userId);
+            var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-                return Ok(client);
-           
+            return Ok(client);
+
         }
 
 
@@ -250,7 +250,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode(500, new { message = "Erreur interne" });
             }
         }
-       
+
 
         // Télécharger le fichier KYC
 
@@ -892,7 +892,7 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode(500, new { message = "Une erreur est survenue lors de la suppression de l'image." });
             }
         }
-      
+
 
         [HttpPost("upload-documents")]
         [Consumes("multipart/form-data")]
@@ -911,14 +911,14 @@ namespace STBEverywhere_back_APIClient.Controllers
                 }
 
                 var existingRequest = await _context.PackStudents
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && ( p.Status == "EnAttente"));
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "EnAttente"));
 
                 if (existingRequest != null)
                 {
                     return BadRequest("Vous avez déjà une demande en cours.");
                 }
                 var existinngRequest = await _context.PackStudents
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee" ));
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee"));
 
                 if (existinngRequest != null)
                 {
@@ -1275,7 +1275,7 @@ Les documents sont joints à cet email.";
 
 
 
-       
+
 
 
 
@@ -1349,7 +1349,7 @@ Les documents sont joints à cet email.";
             }
         }
 
-       
+
 
 
         [HttpGet("generate-student-pdf/{demandId}")]
@@ -1700,7 +1700,7 @@ Les documents sont joints à cet email.";
 
         [HttpGet("notifications")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-      
+
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetNotifications([FromServices] INotificationService notificationService)
         {
@@ -1709,7 +1709,7 @@ Les documents sont joints à cet email.";
                 var userId = GetUserIdFromToken();
                 var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-               
+
 
                 var notifications = await notificationService.GetClientNotifications(client.Id);
                 return Ok(notifications);
@@ -1723,7 +1723,7 @@ Les documents sont joints à cet email.";
 
         [HttpPost("notifications/{notificationId}/mark-as-read")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-     
+
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> MarkNotificationAsRead(int notificationId, [FromServices] INotificationService notificationService)
@@ -1849,7 +1849,7 @@ Les documents sont joints à cet email.";
             }
         }
         [HttpGet("pending-modification-requests")]
-       
+
         public async Task<IActionResult> GetPendingModificationRequests()
         {
             var requests = await _context.ModificationRequests
@@ -1862,7 +1862,7 @@ Les documents sont joints à cet email.";
         }
 
         [HttpPost("process-modification-request/{requestId}")]
-        
+
         public async Task<IActionResult> ProcessModificationRequest(int requestId, [FromBody] ProcessRequestDto dto)
         {
             var request = await _context.ModificationRequests

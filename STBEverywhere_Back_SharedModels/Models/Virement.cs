@@ -28,7 +28,7 @@ namespace  STBEverywhere_Back_SharedModels
 
         public string Statut { get; set; }
 
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         // Nouveau champ pour déterminer le type de virement
         public string TypeVirement { get; set; }   // "Unitaire/Masse"
