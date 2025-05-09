@@ -16,7 +16,7 @@ namespace STBEverywhere_back_APICarte.Repository
         Task<IEnumerable<DemandeCarte>> GetDemandesByStatutAsync(StatutDemande statut);
         Task<bool> CreateCarteAsync(Carte carte);
         Task<bool> PinExistsAsync(String pin);
-        Task<bool> CvvExistsAsync(String  cvv);
+       // Task<bool> CvvExistsAsync(String  cvv);
         Task<Carte> GetCarteByNumCarteAsync(string numCarte);
         Task<IEnumerable<DemandeCarte>> GetDemandesByRIBAsync(string rib);
         Task<DemandeCarte> GetDemandeCarteByIdAsync(int demandeId);

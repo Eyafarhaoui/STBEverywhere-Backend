@@ -27,12 +27,15 @@ namespace STBEverywhere_back_APICarte.Services
         private readonly EmailService _emailService;
         private readonly ApplicationDbContext _dbContext;
         private readonly HttpClient _httpClient;
-        private readonly ICompteService _compteService; // Ajout du service Compte
+        private readonly ICompteService _compteService;
+     
+        private readonly ICvvGeneratorService _cvvGeneratorService;// Ajout du service Compte
 
         public CarteService(
             ICarteRepository carteRepository,
             HttpClient httpClient,
-            ILogger<CarteService> logger,
+            ILogger<CarteService> logger, 
+            ICvvGeneratorService cvvGeneratorService,
             EmailService emailService,
             ApplicationDbContext dbContext,
             ICompteService compteService) // Injection du service
@@ -42,7 +45,8 @@ namespace STBEverywhere_back_APICarte.Services
             _emailService = emailService;
             _dbContext = dbContext;
             _httpClient = httpClient;
-            _compteService = compteService; // Initialisation
+            _compteService = compteService;
+            _cvvGeneratorService = cvvGeneratorService;
         }
 
         public async Task<IEnumerable<CarteDTO>> GetCartesByRIBAsync(string rib)
@@ -81,7 +85,7 @@ namespace STBEverywhere_back_APICarte.Services
         }
 
 
-        // Dans CarteService.cs - modifiez la méthode CreateCarteIfDemandeRecupereeAsync
+        
         public async Task<Carte> CreateCarteIfDemandeRecupereeAsync(int demandeId)
         {
             _logger.LogInformation("Tentative de création de carte pour la demande : {DemandeId}", demandeId);
@@ -100,10 +104,11 @@ namespace STBEverywhere_back_APICarte.Services
             }
 
             var codePIN = await GenerateUniquePinAsync();
-            var codeCVV = await GenerateUniqueCvvAsync();
             var encryptedPIN = EncryptCode(int.Parse(codePIN));
-            var encryptedCVV = EncryptCode(int.Parse(codeCVV));
             var numCarte = await GenerateUniqueCardNumberAsync(demande.NomCarte.ToString());
+            var expirationDate = demande.DateCreation.AddYears(3);
+            var codeCVV = _cvvGeneratorService.GenerateSecureCvv(numCarte, expirationDate);
+            var encryptedCVV = EncryptCode(int.Parse(codeCVV));
             var compte = await _compteService.GetByRIBAsync(demande.NumCompte);
             var carte = new Carte
             {
@@ -111,16 +116,16 @@ namespace STBEverywhere_back_APICarte.Services
                 NomCarte = demande.NomCarte,
                 TypeCarte = demande.TypeCarte,
                 DateCreation = demande.DateCreation,
-                DateExpiration = demande.DateCreation.AddYears(3),
+                DateExpiration = expirationDate,
                 Statut = StatutCarte.Active,
                 RIB = demande.NumCompte,
-                Solde = compte.Solde,
+              //  Solde = compte.Solde,
                 PlafondTPE = 4000,
                 PlafondDAP = 2000,
                 Iddemande = demande.Iddemande,
                 DateRecuperation = DateTime.Now,
                 CodePIN = encryptedPIN,
-                CodeCVV = encryptedCVV
+               
             };
 
             var result = await _carteRepository.CreateCarteAsync(carte);
@@ -133,6 +138,8 @@ namespace STBEverywhere_back_APICarte.Services
 
             return carte;
         }
+
+
 
         // Ajoutez cette nouvelle méthode
         public async Task AddFraisToCarte(string numCarte, FraisCarte frais)
@@ -201,6 +208,11 @@ namespace STBEverywhere_back_APICarte.Services
                 prefix = "539997";
                 length = 16; // Longueur totale de la carte Visa
             }
+            else if (nomCarte.Contains("Tecno"))
+            {
+                prefix = "539997";
+                length = 16; // Longueur totale de la carte Visa
+            }
             else if (nomCarte.Contains("C_"))
             {
                 prefix = "4906012";
@@ -250,19 +262,6 @@ namespace STBEverywhere_back_APICarte.Services
             return pin;
         }
 
-        private async Task<string> GenerateUniqueCvvAsync()
-        {
-            string cvv;
-            bool isUnique;
-
-            do
-            {
-                cvv = GenerateRandomCode(3); // Générer un code CVV à 3 chiffres sous forme de string
-                isUnique = !await _carteRepository.CvvExistsAsync(cvv); // Vérifier l'unicité
-            } while (!isUnique);
-
-            return cvv;
-        }
 
         // Modifier GenerateRandomCode pour retourner une string
         private string GenerateRandomCode(int length)

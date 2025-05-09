@@ -16,7 +16,7 @@
           "carte infinite",
           "carte premier",
           "carte débit",
-          "carte crédit",
+          
           "carte prépayée",
           "frais carte",
           "coût carte",
@@ -664,7 +664,7 @@
             ]
           },
           {
-            "tag": "packs_particuliers_stb",
+            "tag": "pack",
             "patterns": [
               "pack student",
               "pack étudiant ",
@@ -718,7 +718,7 @@
           },
 
           {
-            "tag": "services_entreprise_stb",
+            "tag": "services_entreprise",
             "patterns": [
               "services entreprises STB",
               "compte pro STB",

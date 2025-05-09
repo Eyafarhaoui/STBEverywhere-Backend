@@ -29,7 +29,7 @@ namespace STBEverywhere_Back_SharedModels.Models
         [MaxLength(50)]
         public string NotificationType { get; set; }
 
-        public int? RelatedPackId { get; set; }
+        public int? RelatedId { get; set; }
 
         [ForeignKey("ClientId")] 
         [JsonIgnore]

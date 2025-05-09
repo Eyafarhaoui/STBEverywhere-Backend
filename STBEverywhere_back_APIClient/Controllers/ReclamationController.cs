@@ -24,19 +24,23 @@ namespace STBEverywhere_back_APIClient.Controllers
         private readonly IUserRepository _userRepository;
         private readonly ILogger<ReclamationController> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly INotificationService _notificationService;
 
         public ReclamationController(
             ApplicationDbContext dbContext,
-            IUserRepository userRepository, IHttpContextAccessor httpContextAccessor,
-            ILogger<ReclamationController> logger)
+            IUserRepository userRepository,
+            IHttpContextAccessor httpContextAccessor,
+            ILogger<ReclamationController> logger,
+            INotificationService notificationService) // Ajoutez ce paramètre
         {
             _dbContext = dbContext;
             _userRepository = userRepository;
             _logger = logger;
             _httpContextAccessor = httpContextAccessor;
+            _notificationService = notificationService; // Initialisez le champ
         }
 
-        
+
         [HttpPost("effectuer-reclamation")]
        
         public async Task<IActionResult> CreateReclamation([FromBody] ReclamationDto reclamationDto)
@@ -290,7 +294,7 @@ namespace STBEverywhere_back_APIClient.Controllers
 
 
 
-                var notifications = await notificationService.GetClientReclamationNotifications(client.Id);
+                var notifications = await _notificationService.GetClientReclamationNotifications(client.Id);
                 return Ok(notifications);
             }
             catch (Exception ex)

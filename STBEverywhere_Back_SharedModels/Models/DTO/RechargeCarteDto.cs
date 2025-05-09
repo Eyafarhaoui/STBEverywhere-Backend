@@ -15,5 +15,8 @@ namespace STBEverywhere_Back_SharedModels.Models.DTO
         [Required]
         [Range(0.01, 100000)]
         public decimal Montant { get; set; }
+
+        public string Cvv { get; set; }
+        public string DateExpiration { get; set; } // Format "MM/yy"
     }
 }

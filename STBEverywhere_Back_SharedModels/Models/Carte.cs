@@ -40,7 +40,7 @@ namespace STBEverywhere_Back_SharedModels.Models
         // Clé étrangère vers Compte
         [Required]
         public string RIB { get; set; }
-        public decimal? Solde { get; set; } // Référence au compte
+        public decimal Solde => Compte?.Solde ?? 0;
 
         [ForeignKey("RIB")]
         public Compte Compte { get; set; } // Relation avec Compte
@@ -51,8 +51,7 @@ namespace STBEverywhere_Back_SharedModels.Models
         [Required]
         public string CodePIN { get; set; } // Code PIN à 4 chiffres
 
-        [Required]
-        public string CodeCVV { get; set; } // Code CVV à 3 chiffres
+       
 
         [Column(TypeName = "decimal(18, 2)")]
         public decimal PlafondTPE { get; set; } // Par défaut 4000 pour toutes les cartes

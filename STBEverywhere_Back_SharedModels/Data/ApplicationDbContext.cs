@@ -187,10 +187,10 @@ namespace STBEverywhere_Back_SharedModels.Data
 
 
                 entity.HasData(
-                        new Agent { Id = 1, Nom = "Admin", Prenom = "STB", Departement = "Administration", UserId = 3, AgenceId = "6801861dfe110f2e59031111" }
+                        new Agent { Id = 1, Nom = "Admin", Prenom = "STB", Departement = "Administration", UserId = 3, AgenceId = "680a27afe482daa6835e9f6c" }
                     );
                 entity.HasData(
-                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5 ,AgenceId = "6801861dfe110f2e59031112" }
+                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5 ,AgenceId = "680a27afe482daa6835e9f6d" }
                    );
             });
 
@@ -248,7 +248,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PaysNaissance = "USA",
                         NomMere = "Jane Doe",
                         NomPere = "John Doe Sr.", 
-                        AgenceId= "6801861dfe110f2e59031111", 
+                        AgenceId= "680a27afe482daa6835e9f6c", 
                         id_convention=1,
                         UserId = 1
                     },
@@ -279,7 +279,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         PaysNaissance = "Canada",
                         NomMere = "Mary Smith",
                         NomPere = "Robert Smith",
-                        AgenceId = "6801861dfe110f2e59031112",
+                        AgenceId = "680a27afe482daa6835e9f6d",
                         id_convention=2,
                         UserId = 2
                     },
@@ -376,11 +376,11 @@ namespace STBEverywhere_Back_SharedModels.Data
                         DateExpiration = new DateTime(2027, 1, 1),
                         Statut = StatutCarte.Active,
                         Iddemande = 1,
-                        CodeCVV = "",
+                       
                         Nature = "postpayee",
                         PlafondTPE = 40000,
                         PlafondDAP = 20000,
-                        Solde = 1000.50m,
+                    
                         CodePIN = "",
                         RIB = "10000001121041340847"
                     },
@@ -393,8 +393,8 @@ namespace STBEverywhere_Back_SharedModels.Data
                         DateExpiration = new DateTime(2027, 1, 1),
                         Statut = StatutCarte.Active,
                         Iddemande = 2,
-                        CodeCVV = "",
-                        Solde = 5000.00m,
+                       
+                 
                         Nature = "postpayee",
                         CodePIN = "",
                         PlafondTPE = 40000,

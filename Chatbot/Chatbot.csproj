@@ -7,8 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Package
-		Include="Microsoft.Extensions.Caching.Memory" Version="9.0.4" />
+    <Package Include="Microsoft.Extensions.Caching.Memory" Version="9.0.4" />
+    <PackageReference Include="Azure.AI.Language.Conversations" Version="1.1.0" />
+    <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.4" />
     <PackageReference Include="Microsoft.ML" Version="4.0.2" />

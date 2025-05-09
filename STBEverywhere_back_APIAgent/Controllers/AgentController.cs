@@ -31,15 +31,18 @@ namespace STBEverywhere_back_APIAgent.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _environment;
         private readonly HttpClient _httpClient;
+        private readonly STBEverywhere_back_APIAgent.Service.EmailService _emailService;
 
         public AgentController(
-            IHttpContextAccessor httpContextAccessor,
-            ILogger<AgentController> logger, HttpClient httpClient,
-            IUserRepository userRepository,
-            IHttpClientFactory httpClientFactory,
-            IConfiguration configuration,
-            ApplicationDbContext context,
-            IWebHostEnvironment environment)
+     IHttpContextAccessor httpContextAccessor,
+     ILogger<AgentController> logger, HttpClient httpClient,
+     IUserRepository userRepository,
+     IHttpClientFactory httpClientFactory,
+     IConfiguration configuration,
+     ApplicationDbContext context,
+     IWebHostEnvironment environment,
+    STBEverywhere_back_APIAgent.Service.EmailService emailService)
+
         {
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
@@ -48,7 +51,11 @@ namespace STBEverywhere_back_APIAgent.Controllers
             _configuration = configuration;
             _context = context;
             _environment = environment;
+
+            _emailService = emailService;
+
             _httpClient = httpClient;
+
         }
 
 
@@ -309,6 +316,7 @@ namespace STBEverywhere_back_APIAgent.Controllers
 
                 var request = await _context.ModificationRequests
                     .Include(r => r.Client)
+                    .ThenInclude(c => c.User)  // Important pour récupérer l'email
                     .FirstOrDefaultAsync(r => r.Id == requestId);
 
                 if (request == null)
@@ -317,6 +325,8 @@ namespace STBEverywhere_back_APIAgent.Controllers
                 }
 
                
+
+              
 
                 if (dto.Approve)
                 {
@@ -347,14 +357,16 @@ namespace STBEverywhere_back_APIAgent.Controllers
                     request.Status = "Refusee";
                 }
 
+
                 request.ProcessedByAgentId = agent.Id;
                 request.ProcessedDate = DateTime.Now;
                // request.ResponseComment = dto.Comment;
 
+
                 await _context.SaveChangesAsync();
 
-                // Envoyer une notification au client
-                // await _notificationService.NotifyModificationRequestStatus(request.ClientId, request.Id, request.Status);
+                // Envoyer l'email de notification
+                await SendModificationStatusEmail(request);
 
                 return Ok(new
                 {
@@ -367,6 +379,55 @@ namespace STBEverywhere_back_APIAgent.Controllers
             {
                 _logger.LogError(ex, $"Erreur lors du traitement de la demande {requestId}");
                 return StatusCode(500, new { message = "Erreur interne du serveur" });
+            }
+        }
+
+        private async Task SendModificationStatusEmail(ModificationRequest request)
+        {
+            try
+            {
+                var clientEmail = request.Client.User?.Email;
+                if (string.IsNullOrEmpty(clientEmail))
+                {
+                    _logger.LogWarning($"Impossible d'envoyer l'email: adresse email manquante pour le client {request.ClientId}");
+                    return;
+                }
+
+                string subject;
+                string message;
+
+                if (request.Status == "Acceptee")
+                {
+                    subject = "Votre demande de modification a été acceptée";
+                    message = $@"
+                <h3>Bonjour {request.Client.Prenom} {request.Client.Nom},</h3>
+                <p>Nous vous informons que votre demande de modification de <strong>{request.FieldToModify}</strong> a été <strong>acceptée</strong>.</p>
+                <p>Votre {request.FieldToModify} a été mis à jour avec la valeur: <strong>{request.NewValue}</strong></p>
+                <p>Date de traitement: {request.ProcessedDate?.ToString("dd/MM/yyyy HH:mm")}</p>
+                <p>Cordialement,<br>L'équipe de votre banque</p>";
+                }
+                else
+                {
+                    subject = "Votre demande de modification a été refusée";
+                    message = $@"
+                <h3>Bonjour {request.Client.Prenom} {request.Client.Nom},</h3>
+                <p>Nous vous informons que votre demande de modification de <strong>{request.FieldToModify}</strong> a été <strong>refusée</strong>.</p>
+                
+                <p>Date de traitement: {request.ProcessedDate?.ToString("dd/MM/yyyy HH:mm")}</p>
+                <p>Pour plus d'informations, n'hésitez pas à contacter votre agence.</p>
+                <p>Cordialement,<br>L'équipe de votre banque</p>";
+                }
+
+                var emailSent = await _emailService.SendEmailAsync(clientEmail, subject, message);
+
+                if (!emailSent)
+                {
+                    _logger.LogError($"Échec de l'envoi de l'email de notification pour la demande {request.Id}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Erreur lors de l'envoi de l'email de notification pour la demande {request.Id}");
             }
         }
         #endregion
