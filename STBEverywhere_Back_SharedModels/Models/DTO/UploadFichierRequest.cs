@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 
 namespace STBEverywhere_Back_SharedModels.Models.DTO
 {
@@ -6,5 +7,7 @@ namespace STBEverywhere_Back_SharedModels.Models.DTO
     {
         [Required]
         public IFormFile? Fichier { get; set; }
+        [FromForm]
+        public string? OtpSaisi { get; set; }
     }
 }

@@ -17,6 +17,7 @@ using STBEverywhere_Back_SharedModels.Models;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.JsonPatch.Operations;
 using System.Globalization;
+using RestSharp;
 
 namespace STBEverywhere_back_APICarte.Controllers
 {
@@ -669,8 +670,10 @@ namespace STBEverywhere_back_APICarte.Controllers
         {
             var userId = GetUserIdFromToken();
             var clientEmetteur = await _userRepository.GetClientByUserIdAsync(userId);
-
+            var telEmetteur = clientEmetteur.Telephone;
+            var DateVirement = DateTime.Now.ToString("dd/MM");
             using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            
 
             try
             {
@@ -680,7 +683,6 @@ namespace STBEverywhere_back_APICarte.Controllers
                     .Include(c => c.Compte)
                     .ThenInclude(c => c.Client)
                     .FirstOrDefaultAsync(c => c.NumCarte == dto.CarteEmetteurNum);
-
                 var carteRecepteur = await _dbContext.Cartes
                     .AsTracking()
                     .Include(c => c.Compte)
@@ -749,11 +751,53 @@ namespace STBEverywhere_back_APICarte.Controllers
                 // 6. Mise à jour des soldes
                 carteEmetteur.Compte.Solde -= dto.Montant;
                 carteRecepteur.Compte.Solde += dto.Montant;
-
+                
                 await _dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+
+
+                // SMS pour Emetteur
+                var smsRequestEmetteur = new
+                {
+                    mobile = telEmetteur,
+                    message = $"Le solde de votre compte {carteEmetteur.Compte.RIB} au {DateVirement} est {carteEmetteur.Compte.Solde} TND. Dernière opération: RETRAIT DÉPLACÉ: -{dto.Montant} TND"
+                };
+
+                // SMS pour Recepteur
+                var smsRequestRecepteur = new
+                {
+                    mobile = carteRecepteur.Compte.Client.Telephone,
+                    message = $"Le solde de votre compte {carteRecepteur.Compte.RIB} au {DateVirement} est {carteRecepteur.Compte.Solde} TND. Dernière opération: Recharge Carte:&#43{dto.Montant} TND"
+
+                };
+
+                var options = new RestClientOptions("http://localhost:5203")
+                {
+                    MaxTimeout = -1,
+                };
+                var clientrest = new RestClient(options);
+
+                var requestEmetteur = new RestRequest("/Send", Method.Post);
+                requestEmetteur.AddHeader("Content-Type", "application/json");
+                requestEmetteur.AddJsonBody(smsRequestEmetteur);
+                RestResponse responseEmetteur = await clientrest.ExecuteAsync(requestEmetteur);
+
+                var requestRecepteur = new RestRequest("/Send", Method.Post);
+                requestRecepteur.AddHeader("Content-Type", "application/json");
+                requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                RestResponse responseRecepteur = await clientrest.ExecuteAsync(requestRecepteur);
+
+                if (responseEmetteur.IsSuccessful && responseRecepteur.IsSuccessful)
+                {
+                    return Ok(new { message = "Virement effectué et SMS envoyés avec succès." });
+                }
+                else
+                {
+                    return StatusCode(500, new { error = "Erreur lors de l'envoi des SMS." });
+                }
                 // 7. Préparation de la réponse
+
                 return Ok(new
                 {
                     Success = true,
@@ -767,8 +811,17 @@ namespace STBEverywhere_back_APICarte.Controllers
                         NouveauSoldeRecepteur = carteRecepteur.Compte.Solde,
                         DateExpirationValidee = dto.DateExpiration
                     }
-                });
-            }
+                }); 
+
+
+
+
+               
+
+
+
+
+            } 
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();

@@ -61,13 +61,9 @@ namespace STBEverywhere_Back_ApiUnitaire.Controllers
         public string To { get; set; }  // Adresse email du destinataire
         public string? Subject { get; set; }  // Sujet optionnel
         public string? Content { get; set; }  // Contenu HTML optionnel
-        public List<AttachmentDto>? Attachments { get; set; }
+       
     }
 
-    public class AttachmentDto
-    {
-        public string FileName { get; set; }  // Nom du fichier (ex: "passport.pdf")
-        public string FileBase64 { get; set; }  // Contenu base64
-    }
+  
 }
 

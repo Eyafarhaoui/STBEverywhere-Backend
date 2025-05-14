@@ -6,6 +6,7 @@ using STBEverywhere_Back_SharedModels.Models.DTO;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 
 namespace STBEverywheres_Back_ApiAuth.Services
 {
@@ -140,33 +141,63 @@ namespace STBEverywheres_Back_ApiAuth.Services
 
         public async Task<string> ForgotPasswordAsync(string email)
         {
-            _logger.LogInformation("Password reset request for email: {Email}", email);
-
-            var user = await _userRepository.GetByEmailAsync(email);
-            if (user == null)
+            try
             {
-                throw new InvalidOperationException("No user found with this email.");
+                _logger.LogInformation("Password reset request for email: {Email}", email);
+
+                var user = await _userRepository.GetByEmailAsync(email);
+                if (user == null)
+                {
+                    throw new InvalidOperationException("No user found with this email.");
+                }
+
+                var resetToken = Guid.NewGuid().ToString(); // Générer un token unique
+                user.ResetPasswordToken = resetToken;
+                user.ResetPasswordTokenExpiry = DateTime.UtcNow.AddHours(1); // Expiration après 1h
+                await _userRepository.UpdateAsync(user);
+
+                // Créer le lien de réinitialisation
+                var resetPasswordUrl = $"http://localhost:4200/reset-password?token={resetToken}";
+                var emailSubject = "Demande de réinitialisation du mot de passe";
+                var emailBody = $"<p>Bonjour,</p><p>Nous avons reçu une demande de réinitialisation de votre mot de passe. Veuillez cliquer sur le lien ci-dessous pour réinitialiser votre mot de passe :</p><p><a href='{resetPasswordUrl}'>Réinitialiser le mot de passe</a></p><p>Ce lien expirera dans 1 heure.</p>";
+
+                // Appel HTTP POST vers le controller Email
+                var emailRequest = new
+                {
+                    to = user.Email,
+                    subject = emailSubject,
+                    content = emailBody
+                };
+
+                using (var httpClient = new HttpClient())
+                {
+                    var json = JsonSerializer.Serialize(emailRequest);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    _logger.LogInformation("Appel de l'envoi d'email à {To} avec sujet {Subject}", user.Email, emailSubject);
+                    _logger.LogInformation("Body email : {Body}", emailBody);
+
+                    var response = await httpClient.PostAsync("http://localhost:5203/api/email/send", content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return "Password reset instructions have been sent to your email.";
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogError("Erreur lors de l'envoi de l'email : {Error}", errorContent);
+                        throw new Exception("Erreur lors de l'envoi de l'email.");
+                    }
+                }
             }
-
-            var resetToken = Guid.NewGuid().ToString(); // Générer un token unique
-            user.ResetPasswordToken = resetToken;
-            user.ResetPasswordTokenExpiry = DateTime.UtcNow.AddHours(1); // Expiration du token après 1 heure
-
-            await _userRepository.UpdateAsync(user);
-
-            // Créer l'URL pour la réinitialisation du mot de passe
-            var resetPasswordUrl = $"http://localhost:4200/reset-password?token={resetToken}";
-
-            // Créer le contenu de l'email
-            var subject = "Réinitialisation de votre mot de passe";
-            var body = $"<p>Bonjour,</p><p>Nous avons reçu une demande de réinitialisation de votre mot de passe. Veuillez cliquer sur le lien ci-dessous pour réinitialiser votre mot de passe :</p><p><a href='{resetPasswordUrl}'>Réinitialiser le mot de passe</a></p><p>Ce lien expirera dans 1 heure.</p>";
-
-            // Appel du service d'envoi d'email
-            var emailService = new EmailService(_configuration);
-            await emailService.SendEmailAsync(user.Email, subject, body);
-
-            return "Password reset instructions have been sent to your email.";
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la demande de réinitialisation du mot de passe.");
+                throw;
+            }
         }
+
 
         public async Task<string> ResetPasswordAsync(ResetPasswordDto resetPasswordDto)
         {

@@ -21,6 +21,10 @@ using System;
 using SixLabors.ImageSharp.ColorSpaces;
 using RestSharp;
 using System.Net.Http;
+using STBEverywhere_back_APICompte.Services.IServices;
+using System.Collections.Generic;
+using static System.Net.WebRequestMethods;
+using Org.BouncyCastle.Asn1.Ocsp;
 //using STBEverywhere_back_APIClient.Repositories;
 
 
@@ -42,10 +46,11 @@ namespace STBEverywhere_back_APICompte.Controllers
         private readonly IWebHostEnvironment _webHostEnvironment;
         private readonly DecouvertTrackerService _DecouvertTrackerService;
         private readonly HttpClient _httpClient;
+        private readonly IOtpService _OtpService;
         //private readonly IVirementService _virementService;
 
 
-        public VirementApiController(HttpClient httpClient, DecouvertTrackerService DecouvertTrackerService,IWebHostEnvironment webHostEnvironment, IFraisCompteRepository dbFraisCompte, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository,ICompteRepository dbCompte, IVirementRepository dbVirement, IBeneficiaireRepository dbBeneficiaire, ILogger<VirementApiController> logger, IMapper mapper)
+        public VirementApiController(IOtpService otpService,HttpClient httpClient, DecouvertTrackerService DecouvertTrackerService,IWebHostEnvironment webHostEnvironment, IFraisCompteRepository dbFraisCompte, IHttpContextAccessor httpContextAccessor, IUserRepository userRepository,ICompteRepository dbCompte, IVirementRepository dbVirement, IBeneficiaireRepository dbBeneficiaire, ILogger<VirementApiController> logger, IMapper mapper)
         {
             _dbCompte = dbCompte;
             _dbFraisCompte = dbFraisCompte;
@@ -58,6 +63,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             _httpContextAccessor = httpContextAccessor;
             _DecouvertTrackerService = DecouvertTrackerService;
             _httpClient = httpClient;
+            _OtpService= otpService;
             // _virementService = virementService;
 
         }
@@ -65,6 +71,8 @@ namespace STBEverywhere_back_APICompte.Controllers
         {
             return 1; // Valeur fixe pour les tests
         }*/
+
+
 
 
         [HttpPost("Virement")]
@@ -91,149 +99,133 @@ namespace STBEverywhere_back_APICompte.Controllers
             }
 
             if (virementDto == null || string.IsNullOrEmpty(virementDto.RIB_Emetteur) || virementDto.Montant <= 0)
-            {
-                _logger.LogWarning("Champs requis manquants ou montant invalide.");
                 return BadRequest(new { message = "RIB émetteur et montant sont obligatoires." });
-            }
 
             var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Emetteur)).FirstOrDefault();
             if (emetteur == null)
-            {
-                _logger.LogWarning("Compte émetteur introuvable pour le RIB : {RIB}", virementDto.RIB_Emetteur);
                 return NotFound(new { message = "Compte émetteur introuvable." });
-            }
 
-            Compte recepteur = null; 
+            Compte recepteur = null;
+
             if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
             {
                 if (virementDto.IdBeneficiaire == null)
-                {
-                    _logger.LogWarning("ID bénéficiaire requis mais non fourni.");
                     return BadRequest(new { message = "ID bénéficiaire requis pour ce type de virement." });
-                }
 
                 var beneficiaire = await _dbBeneficiaire.GetByIdAsync(virementDto.IdBeneficiaire.Value);
                 if (beneficiaire == null)
-                {
-                    _logger.LogWarning("Bénéficiaire introuvable pour l'ID : {IdBeneficiaire}", virementDto.IdBeneficiaire);
                     return NotFound(new { message = "Bénéficiaire introuvable." });
-                }
 
                 recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == beneficiaire.RIBCompte)).FirstOrDefault();
+
+                // OTP requis uniquement pour virement vers autre bénéficiaire
+                if (string.IsNullOrEmpty(virementDto.OtpCode))
+                {
+                    var otp = _OtpService.GenerateOtp();
+                    var virement = new Virement
+                    {
+                        RIB_Emetteur = virementDto.RIB_Emetteur,
+                        RIB_Recepteur = recepteur?.RIB,
+                        Montant = virementDto.Montant,
+                        DateVirement = DateTime.Now,
+                        Statut = "En attente OTP",
+                        Motif = virementDto.motif,
+                        TypeVirement = virementDto.TypeVirement,
+                        Description = virementDto.Description,
+                        OtpCode = otp
+                        
+
+                    };
+                    await _dbVirement.CreateAsync(virement);
+                    await _OtpService.SendOtpAsync(client.Telephone, otp);
+                    return Ok(new { message = "OTP envoyé. Veuillez le saisir pour valider le virement.", virementId = virement.Id });
+                }
+
+                var virementExistant = await _dbVirement.GetByIdAsync(virementDto.Id);
+                if (virementExistant == null)
+                    return NotFound(new { message = "Virement non trouvé." });
+
+                if (virementExistant.Statut != "En attente OTP")
+                    return BadRequest(new { message = "Virement déjà traité." });
+
+                if (!_OtpService.ValidateOtp(virementExistant.OtpCode, virementDto.OtpCode))
+                    return BadRequest(new { message = "Code OTP invalide." });
             }
             else if (virementDto.TypeVirement == "VirementUnitaireVersMescomptes")
             {
-                if (string.IsNullOrEmpty(virementDto.RIB_Recepteur)) // Vérifier que le RIB du récepteur est fourni dans la requête
-                {
-                    _logger.LogWarning("RIB récepteur requis mais non fourni.");
+                if (string.IsNullOrEmpty(virementDto.RIB_Recepteur))
                     return BadRequest(new { message = "RIB récepteur requis pour ce type de virement." });
-                }
 
                 recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Recepteur)).FirstOrDefault();
                 if (recepteur == null)
-                {
-                    _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIBRecepteur}", virementDto.RIB_Recepteur);
                     return NotFound(new { message = "Compte récepteur introuvable." });
-                }
             }
             else
             {
-                _logger.LogWarning("Type de virement non reconnu : {TypeVirement}", virementDto.TypeVirement);
                 return BadRequest(new { message = "Type de virement non reconnu." });
             }
 
             if (recepteur == null)
-            {
-                _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIB}", recepteur.RIB);
                 return NotFound(new { message = "Compte récepteur introuvable." });
-            }
+
             decimal COMMISSION = 1.500m;
             decimal TVA = 0.285m;
             decimal montantTotal = virementDto.Montant +
                 (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
 
-
-            // Vérification du solde disponible (incluant le découvert)
             if (emetteur.SoldeDisponible < montantTotal)
-            {
-                _logger.LogWarning("Solde insuffisant. Solde disponible : {SoldeDisponible}, MontantTotal : {MontantTotal}", emetteur.SoldeDisponible, montantTotal);
-                return BadRequest(new { message = "Solde insuffisant, y compris avec le découvert autorisé." });
-            }
+                return BadRequest(new { message = "Solde insuffisant." });
+
             if (emetteur.Type == "epargne" && emetteur.Solde - montantTotal < 10.000m)
-            {
-                _logger.LogWarning("Tentative de virement qui ferait descendre le solde sous 10,000 TND.");
-                return BadRequest(new { message = "Opération non autorisée : le solde disponible ne peut être inférieur au solde minimum réglementaire de 10,000 TND exigé pour les comptes épargne." });
-            }
+                return BadRequest(new { message = "Le solde disponible ne peut être inférieur à 10.000 TND." });
 
             await _dbVirement.BeginTransactionAsync();
             try
             {
                 emetteur.Solde -= montantTotal;
-
                 if (emetteur.Solde < 0)
-                {
                     emetteur.DecouvertAutorise += emetteur.Solde;
-                }
 
-                recepteur.Solde += virementDto.Montant;
+                recepteur.Solde += virementDto.Montant - (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
 
                 await _dbCompte.UpdateAsync(emetteur);
                 await _dbCompte.UpdateAsync(recepteur);
                 await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
 
-                var virement = new Virement
-                {
-                    RIB_Emetteur = virementDto.RIB_Emetteur,
-                    RIB_Recepteur = recepteur.RIB,
-                    Montant = virementDto.Montant,
-                    DateVirement = DateTime.Now,
-                    Statut = "Réussi",
-                    Motif = virementDto.motif,
-                    TypeVirement = virementDto.TypeVirement,
-                    Description = virementDto.Description
-                };
-
-                await _dbVirement.CreateAsync(virement);
+                Virement virementFinal;
 
                 if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
                 {
-                    var fraisEmetteur = new FraisCompte
-                    {
-                        RIB = virementDto.RIB_Emetteur,
-                        IdsVirements = new List<int> { virement.Id },
-                        Montant = COMMISSION,
-                        type = "COMMISSION VIREMENT ÉMIS EN DINARS",
-                        Date = DateTime.Now
-                    };
-                    var TVAEmetteur = new FraisCompte
-                    {
-                        RIB = virementDto.RIB_Emetteur,
-                        IdsVirements = new List<int> { virement.Id },
-                        Montant = TVA,
-                        type = "TVA SUR COMMISSION VIREMENT ÉMIS",
-                        Date = DateTime.Now
-                    };
+                    virementFinal = await _dbVirement.GetByIdAsync(virementDto.Id);
+                    virementFinal.Statut = "Réussi";
+                    virementFinal.DateVirement = DateTime.Now;
+                    await _dbVirement.UpdateAsync(virementFinal);
 
-                    var fraisRecepteur = new FraisCompte
-                    {
-                        RIB = recepteur.RIB,
-                        IdsVirements = new List<int> { virement.Id },
-                        Montant = COMMISSION,
-                        type = "COMMISSION VIREMENT Reçu EN DINARS ",
-                        Date = DateTime.Now
-                    };
+                    var fraisList = new List<FraisCompte>
+            {
+                new() { RIB = virementDto.RIB_Emetteur, Montant = COMMISSION, type = "COMMISSION VIREMENT ÉMIS EN DINARS", Date = DateTime.Now, IdsVirements = new() { virementFinal.Id } },
+                new() { RIB = virementDto.RIB_Emetteur, Montant = TVA, type = "TVA SUR COMMISSION VIREMENT ÉMIS", Date = DateTime.Now, IdsVirements = new() { virementFinal.Id } },
+                new() { RIB = recepteur.RIB, Montant = COMMISSION, type = "COMMISSION VIREMENT Reçu EN DINARS", Date = DateTime.Now, IdsVirements = new() { virementFinal.Id } },
+                new() { RIB = recepteur.RIB, Montant = TVA, type = "TVA SUR COMMISSION VIREMENT Reçu EN DINARS", Date = DateTime.Now, IdsVirements = new() { virementFinal.Id } }
+            };
 
-                    var TVARecepteur = new FraisCompte
+                    foreach (var frais in fraisList)
+                        await _dbFraisCompte.CreateAsync(frais);
+                }
+                else
+                {
+                    virementFinal = new Virement
                     {
-                        RIB = recepteur.RIB,
-                        IdsVirements = new List<int> { virement.Id },
-                        Montant = TVA,
-                        type = "TVA SUR COMMISSION VIREMENT Reçu EN DINARS  ",
-                        Date = DateTime.Now
+                        RIB_Emetteur = virementDto.RIB_Emetteur,
+                        RIB_Recepteur = recepteur.RIB,
+                        Montant = virementDto.Montant,
+                        DateVirement = DateTime.Now,
+                        Statut = "Réussi",
+                        Motif = virementDto.motif,
+                        TypeVirement = virementDto.TypeVirement,
+                        Description = virementDto.Description
                     };
-
-                    await _dbFraisCompte.CreateAsync(fraisEmetteur);
-                    await _dbFraisCompte.CreateAsync(fraisRecepteur);
+                    await _dbVirement.CreateAsync(virementFinal);
                 }
 
                 await _dbVirement.CommitTransactionAsync();
@@ -245,77 +237,336 @@ namespace STBEverywhere_back_APICompte.Controllers
                 return StatusCode(500, new { message = "Erreur lors du traitement du virement." });
             }
 
-            Console.WriteLine("RIB_Emetteur: " + virementDto.RIB_Emetteur);
             var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(virementDto.RIB_Emetteur);
-            Console.WriteLine("soldeEmetteur: " + soldeEmetteur);
-
-            Console.WriteLine("rib recepteur: " + recepteur.RIB);
             var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(recepteur.RIB);
-            Console.WriteLine("soldeRecepteur: " + soldeRecepteur);
+            var dateVirement = DateTime.Now.ToString("dd/MM");
 
-            var DateVirement = DateTime.Now.ToString("dd/MM");
-            var telephoneEmetteur = client.Telephone;
-            // Ajout des logs pour le debug
-            _logger.LogInformation("Recherche de l'idClientRecepteur pour le RIB : {recepteur.RIB}", recepteur.RIB);
             var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(recepteur.RIB);
-            _logger.LogInformation("idClientRecepteur: {idClientRecepteur}", idClientRecepteur);
-
-            var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
-            _logger.LogInformation("Appel API URL : {apiurl}", apiurl);
-
-            var reponse = await _httpClient.GetAsync(apiurl);
+            var reponse = await _httpClient.GetAsync($"http://localhost:5260/api/Client/{idClientRecepteur}");
 
             if (!reponse.IsSuccessStatusCode)
-            {
-                _logger.LogError("Erreur lors de l'appel à l'API de client pour le récepteur, statut : {StatusCode}", reponse.StatusCode);
                 return StatusCode(500, new { message = "Erreur lors de l'appel API pour obtenir les informations du récepteur." });
-            }
 
             var clientrecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
-            var telephoneRecepteur = clientrecepteur.Telephone;
 
-            // SMS pour Emetteur
             var smsRequestEmetteur = new
             {
-                mobile = telephoneEmetteur,
-                message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {DateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{montantTotal} TND"
+                mobile = client.Telephone,
+                message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{montantTotal} TND"
             };
 
-            // SMS pour Recepteur
             var smsRequestRecepteur = new
             {
-                mobile = telephoneRecepteur,
-                message = $"Le solde de votre compte {recepteur.RIB} au {DateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu: +{virementDto.Montant} TND"
-
-        };
-
-            var options = new RestClientOptions("http://localhost:5203")
-            {
-                MaxTimeout = -1,
+                mobile = clientrecepteur.Telephone,
+                message = $"Le solde de votre compte {recepteur.RIB} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu: +{virementDto.Montant} TND"
             };
-            var clientrest = new RestClient(options);
 
-            var requestEmetteur = new RestRequest("/Send", Method.Post);
-            requestEmetteur.AddHeader("Content-Type", "application/json");
-            requestEmetteur.AddJsonBody(smsRequestEmetteur);
-            RestResponse responseEmetteur = await clientrest.ExecuteAsync(requestEmetteur);
+            var clientrest = new RestClient(new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 });
 
-            var requestRecepteur = new RestRequest("/Send", Method.Post);
-            requestRecepteur.AddHeader("Content-Type", "application/json");
-            requestRecepteur.AddJsonBody(smsRequestRecepteur);
-            RestResponse responseRecepteur = await clientrest.ExecuteAsync(requestRecepteur);
+            var requestEmetteur = new RestRequest("/Send", Method.Post).AddHeader("Content-Type", "application/json").AddJsonBody(smsRequestEmetteur);
+            var requestRecepteur = new RestRequest("/Send", Method.Post).AddHeader("Content-Type", "application/json").AddJsonBody(smsRequestRecepteur);
+
+            var responseEmetteur = await clientrest.ExecuteAsync(requestEmetteur);
+            var responseRecepteur = await clientrest.ExecuteAsync(requestRecepteur);
 
             if (responseEmetteur.IsSuccessful && responseRecepteur.IsSuccessful)
-            {
                 return Ok(new { message = "Virement effectué et SMS envoyés avec succès." });
-            }
-            else
-            {
-                return StatusCode(500, new { error = "Erreur lors de l'envoi des SMS." });
-            }
 
+            return StatusCode(500, new { error = "Erreur lors de l'envoi des SMS." });
         }
 
+
+
+
+
+
+
+
+        /*version avant derniere 
+                [HttpPost("Virement")]
+                [ProducesResponseType(StatusCodes.Status200OK)]
+                [ProducesResponseType(StatusCodes.Status400BadRequest)]
+                [ProducesResponseType(StatusCodes.Status404NotFound)]
+                [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+                public async Task<IActionResult> Virement([FromBody] VirementUnitaireDto virementDto)
+                {
+                    _logger.LogInformation("Requête reçue pour un virement. Données : {@virementDto}", virementDto);
+
+                    var userId = GetUserIdFromToken();
+                    _logger.LogInformation("UserId extrait du token : {userId}", userId);
+
+                    var client = await _userRepository.GetClientByUserIdAsync(userId);
+                    _logger.LogInformation("Client récupéré : {@client}", client);
+
+                    var clientId = client?.Id;
+
+                    if (clientId == null)
+                    {
+                        _logger.LogWarning("Utilisateur non authentifié.");
+                        return Unauthorized(new { message = "Utilisateur non authentifié" });
+                    }
+
+                    if (virementDto == null || string.IsNullOrEmpty(virementDto.RIB_Emetteur) || virementDto.Montant <= 0)
+                    {
+                        _logger.LogWarning("Champs requis manquants ou montant invalide.");
+                        return BadRequest(new { message = "RIB émetteur et montant sont obligatoires." });
+                    }
+
+                    var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Emetteur)).FirstOrDefault();
+                    if (emetteur == null)
+                    {
+                        _logger.LogWarning("Compte émetteur introuvable pour le RIB : {RIB}", virementDto.RIB_Emetteur);
+                        return NotFound(new { message = "Compte émetteur introuvable." });
+                    }
+
+                    Compte recepteur = null; 
+                    if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
+                    {
+                        if (virementDto.IdBeneficiaire == null)
+                        {
+                            _logger.LogWarning("ID bénéficiaire requis mais non fourni.");
+                            return BadRequest(new { message = "ID bénéficiaire requis pour ce type de virement." });
+                        }
+
+                        var beneficiaire = await _dbBeneficiaire.GetByIdAsync(virementDto.IdBeneficiaire.Value);
+                        if (beneficiaire == null)
+                        {
+                            _logger.LogWarning("Bénéficiaire introuvable pour l'ID : {IdBeneficiaire}", virementDto.IdBeneficiaire);
+                            return NotFound(new { message = "Bénéficiaire introuvable." });
+                        }
+
+                        recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == beneficiaire.RIBCompte)).FirstOrDefault();
+                    }
+                    else if (virementDto.TypeVirement == "VirementUnitaireVersMescomptes")
+                    {
+                        if (string.IsNullOrEmpty(virementDto.RIB_Recepteur)) // Vérifier que le RIB du récepteur est fourni dans la requête
+                        {
+                            _logger.LogWarning("RIB récepteur requis mais non fourni.");
+                            return BadRequest(new { message = "RIB récepteur requis pour ce type de virement." });
+                        }
+
+                        recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == virementDto.RIB_Recepteur)).FirstOrDefault();
+                        if (recepteur == null)
+                        {
+                            _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIBRecepteur}", virementDto.RIB_Recepteur);
+                            return NotFound(new { message = "Compte récepteur introuvable." });
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Type de virement non reconnu : {TypeVirement}", virementDto.TypeVirement);
+                        return BadRequest(new { message = "Type de virement non reconnu." });
+                    }
+
+                    if (recepteur == null)
+                    {
+                        _logger.LogWarning("Compte récepteur introuvable pour le RIB : {RIB}", recepteur.RIB);
+                        return NotFound(new { message = "Compte récepteur introuvable." });
+                    }
+                    decimal COMMISSION = 1.500m;
+                    decimal TVA = 0.285m;
+                    decimal montantTotal = virementDto.Montant +
+                        (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
+
+
+                    // Vérification du solde disponible (incluant le découvert)
+                    if (emetteur.SoldeDisponible < montantTotal)
+                    {
+                        _logger.LogWarning("Solde insuffisant. Solde disponible : {SoldeDisponible}, MontantTotal : {MontantTotal}", emetteur.SoldeDisponible, montantTotal);
+                        return BadRequest(new { message = "Solde insuffisant, y compris avec le découvert autorisé." });
+                    }
+                    if (emetteur.Type == "epargne" && emetteur.Solde - montantTotal < 10.000m)
+                    {
+                        _logger.LogWarning("Tentative de virement qui ferait descendre le solde sous 10,000 TND.");
+                        return BadRequest(new { message = "Opération non autorisée : le solde disponible ne peut être inférieur au solde minimum réglementaire de 10,000 TND exigé pour les comptes épargne." });
+                    }
+
+
+                    if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
+
+                        if (string.IsNullOrEmpty(virementDto.OtpCode))
+                    {
+                        var otp = _OtpService.GenerateOtp();
+
+                        var virement = new Virement
+                        {
+                            RIB_Emetteur = virementDto.RIB_Emetteur,
+                            RIB_Recepteur = recepteur.RIB,
+                            Montant = virementDto.Montant,
+                            DateVirement = DateTime.Now,
+                            Statut = "En attente OTP",
+                            Motif = virementDto.motif,
+                            TypeVirement = virementDto.TypeVirement,
+                            Description = virementDto.Description,
+                            OtpCode = otp
+                        };
+                        await _dbVirement.CreateAsync(virement);
+
+                        await _OtpService.SendOtpAsync(client.Telephone, otp);
+
+                        return Ok(new { message = "OTP envoyé. Veuillez le saisir pour valider le virement.", virementId = virement.Id });
+
+
+
+                    }
+
+                    _logger.LogInformation("Recherche du virement existant avec ID: {VirementId}", virementDto.Id);
+
+                    var virementExistant = await _dbVirement.GetByIdAsync(virementDto.Id);
+                    if (virementExistant == null)
+                        return NotFound(new { message = "Virement non trouvé." });
+
+                    if (virementExistant.Statut != "En attente OTP")
+                        return BadRequest(new { message = "Virement déjà traité." });
+
+                    if (!_OtpService.ValidateOtp(virementExistant.OtpCode, virementDto.OtpCode))
+                        return BadRequest(new { message = "Code OTP invalide." });
+                    await _dbVirement.BeginTransactionAsync();
+                    try
+                    {
+                        emetteur.Solde -= montantTotal;
+
+                        if (emetteur.Solde < 0)
+                        {
+                            emetteur.DecouvertAutorise += emetteur.Solde;
+                        }
+
+                        recepteur.Solde += virementDto.Montant;
+
+                        await _dbCompte.UpdateAsync(emetteur);
+                        await _dbCompte.UpdateAsync(recepteur);
+                        await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
+
+
+
+                        // Remplacer la création du nouveau virement par la mise à jour de l'existant
+                        virementExistant.Statut = "Réussi";
+                        virementExistant.DateVirement = DateTime.Now;
+                        await _dbVirement.UpdateAsync(virementExistant);
+
+                        if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
+                        {
+                            var fraisEmetteur = new FraisCompte
+                            {
+                                RIB = virementDto.RIB_Emetteur,
+                                IdsVirements = new List<int> { virementExistant.Id },
+                                Montant = COMMISSION,
+                                type = "COMMISSION VIREMENT ÉMIS EN DINARS",
+                                Date = DateTime.Now
+                            };
+                            var TVAEmetteur = new FraisCompte
+                            {
+                                RIB = virementDto.RIB_Emetteur,
+                                IdsVirements = new List<int> { virementExistant.Id },
+                                Montant = TVA,
+                                type = "TVA SUR COMMISSION VIREMENT ÉMIS",
+                                Date = DateTime.Now
+                            };
+
+                            var fraisRecepteur = new FraisCompte
+                            {
+                                RIB = recepteur.RIB,
+                                IdsVirements = new List<int> { virementExistant.Id },
+                                Montant = COMMISSION,
+                                type = "COMMISSION VIREMENT Reçu EN DINARS ",
+                                Date = DateTime.Now
+                            };
+
+                            var TVARecepteur = new FraisCompte
+                            {
+                                RIB = recepteur.RIB,
+                                IdsVirements = new List<int> { virementExistant.Id },
+                                Montant = TVA,
+                                type = "TVA SUR COMMISSION VIREMENT Reçu EN DINARS  ",
+                                Date = DateTime.Now
+                            };
+
+                            await _dbFraisCompte.CreateAsync(fraisEmetteur);
+                            await _dbFraisCompte.CreateAsync(TVAEmetteur);
+                            await _dbFraisCompte.CreateAsync(fraisRecepteur);
+                            await _dbFraisCompte.CreateAsync(TVARecepteur);
+                        }
+
+                        await _dbVirement.CommitTransactionAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        await _dbVirement.RollbackTransactionAsync();
+                        _logger.LogError(ex, "Erreur lors du virement");
+                        return StatusCode(500, new { message = "Erreur lors du traitement du virement." });
+                    }
+
+                    Console.WriteLine("RIB_Emetteur: " + virementDto.RIB_Emetteur);
+                    var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(virementDto.RIB_Emetteur);
+                    Console.WriteLine("soldeEmetteur: " + soldeEmetteur);
+
+                    Console.WriteLine("rib recepteur: " + recepteur.RIB);
+                    var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(recepteur.RIB);
+                    Console.WriteLine("soldeRecepteur: " + soldeRecepteur);
+
+                    var DateVirement = DateTime.Now.ToString("dd/MM");
+                    var telephoneEmetteur = client.Telephone;
+                    // Ajout des logs pour le debug
+                    _logger.LogInformation("Recherche de l'idClientRecepteur pour le RIB : {recepteur.RIB}", recepteur.RIB);
+                    var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(recepteur.RIB);
+                    _logger.LogInformation("idClientRecepteur: {idClientRecepteur}", idClientRecepteur);
+
+                    var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+                    _logger.LogInformation("Appel API URL : {apiurl}", apiurl);
+
+                    var reponse = await _httpClient.GetAsync(apiurl);
+
+                    if (!reponse.IsSuccessStatusCode)
+                    {
+                        _logger.LogError("Erreur lors de l'appel à l'API de client pour le récepteur, statut : {StatusCode}", reponse.StatusCode);
+                        return StatusCode(500, new { message = "Erreur lors de l'appel API pour obtenir les informations du récepteur." });
+                    }
+
+                    var clientrecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+                    var telephoneRecepteur = clientrecepteur.Telephone;
+
+                    // SMS pour Emetteur
+                    var smsRequestEmetteur = new
+                    {
+                        mobile = telephoneEmetteur,
+                        message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {DateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{montantTotal} TND"
+                    };
+
+                    // SMS pour Recepteur
+                    var smsRequestRecepteur = new
+                    {
+                        mobile = telephoneRecepteur,
+                        message = $"Le solde de votre compte {recepteur.RIB} au {DateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu: +{virementDto.Montant} TND"
+
+                };
+
+                    var options = new RestClientOptions("http://localhost:5203")
+                    {
+                        MaxTimeout = -1,
+                    };
+                    var clientrest = new RestClient(options);
+
+                    var requestEmetteur = new RestRequest("/Send", Method.Post);
+                    requestEmetteur.AddHeader("Content-Type", "application/json");
+                    requestEmetteur.AddJsonBody(smsRequestEmetteur);
+                    RestResponse responseEmetteur = await clientrest.ExecuteAsync(requestEmetteur);
+
+                    var requestRecepteur = new RestRequest("/Send", Method.Post);
+                    requestRecepteur.AddHeader("Content-Type", "application/json");
+                    requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                    RestResponse responseRecepteur = await clientrest.ExecuteAsync(requestRecepteur);
+
+                    if (responseEmetteur.IsSuccessful && responseRecepteur.IsSuccessful)
+                    {
+                        return Ok(new { message = "Virement effectué et SMS envoyés avec succès." });
+                    }
+                    else
+                    {
+                        return StatusCode(500, new { error = "Erreur lors de l'envoi des SMS." });
+                    }
+
+                }
+        */
 
 
 
@@ -612,7 +863,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             _logger.LogInformation("Fichier uploadé avec succès : {FilePath}", filePath);
 
             // Appel direct du traitement de virement
-            return await VirementDeMasseTraitement(filePath);
+            return await VirementDeMasseTraitement(filePath, request.OtpSaisi);
 
 
 
@@ -647,14 +898,23 @@ namespace STBEverywhere_back_APICompte.Controllers
 
                     return Ok(new { message = "Fichier uploadé avec succès.", filePath });
                 }*/
+
+
+
+
+
+
+
+
+
+        private static Dictionary<int, string> _otpStore = new Dictionary<int, string>();
+
         private async Task<IActionResult> VirementDeMasseParFormulaire(VirementMasseFormulaireDto dto)
         {
-            var virementsEffectués = new List<Virement>();
             var userId = GetUserIdFromToken();
-            
             var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-            //  compte émetteur
+            // compte émetteur
             var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == dto.RibEmetteur)).FirstOrDefault();
             if (emetteur == null)
             {
@@ -666,170 +926,410 @@ namespace STBEverywhere_back_APICompte.Controllers
 
             // Calcul des frais
             int nombreBeneficiaires = dto.Beneficiaires.Count;
-            decimal frais = 5.0m; // Frais de base pour les 5 premiers bénéficiaires
+            decimal frais = 5.0m;
             if (nombreBeneficiaires > 5)
             {
                 frais += (nombreBeneficiaires - 5) * 0.5m;
             }
 
-            // Calcul du solde disponible (en tenant compte du découvert)
-            //decimal soldeDisponible = emetteur.Solde + emetteur.DecouvertAutorise;
             decimal soldeDisponible = emetteur.Solde + emetteur.DecouvertAutorise.Value;
 
-
-            // Vérification du solde disponible
             if (soldeDisponible < (totalVirement + frais))
             {
                 return BadRequest(new { message = $"Solde insuffisant, y compris avec le découvert autorisé. Montant nécessaire : {totalVirement + frais}" });
             }
 
-            await _dbVirement.BeginTransactionAsync();
-            try
+            // Vérification si l'OTP est fourni
+            if (string.IsNullOrEmpty(dto.Otp))
             {
-                var idsVirements = new List<int>();
+                // Génération et envoi de l'OTP
+                var otp = new Random().Next(100000, 999999).ToString();
+                _otpStore[userId] = otp;
 
-                foreach (var beneficiaire in dto.Beneficiaires)
-                {
-                    var ribRecepteur = await GetRibById(beneficiaire.IdBeneficiaire);
-                    if (string.IsNullOrEmpty(ribRecepteur))
-                    {
-                        await _dbVirement.RollbackTransactionAsync();
-                        return BadRequest(new { message = $"RIB introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
-                    }
-
-                    var recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == ribRecepteur)).FirstOrDefault();
-                    if (recepteur == null)
-                    {
-                        await _dbVirement.RollbackTransactionAsync();
-                        return BadRequest(new { message = $"Compte destinataire introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
-                    }
-
-                    // Débit/Crédit en tenant compte du découvert
-                    emetteur.Solde -= beneficiaire.Montant;
-                    if (idsVirements.Count == 0) // Premier virement, on déduit les frais
-                    {
-                        emetteur.Solde -= frais;
-                    }
-                    recepteur.Solde += beneficiaire.Montant;
-
-                    // Ajustement du découvert autorisé si le solde devient négatif
-                    if (emetteur.Solde < 0)
-                    {
-                        emetteur.DecouvertAutorise += emetteur.Solde; // Réduction du découvert autorisé
-
-                    }
-
-                    await _dbCompte.UpdateAsync(emetteur);
-                    await _dbCompte.UpdateAsync(recepteur);
-                    await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
-
-                    // Création du virement
-                    var virement = new Virement
-                    {
-                        RIB_Emetteur = dto.RibEmetteur,
-                        RIB_Recepteur = ribRecepteur,
-                        Motif = dto.Motif,
-                        Description = dto.Description,
-                        DateVirement = DateTime.Now,
-                        Montant = beneficiaire.Montant,
-                        Statut = "Réussi",
-                        TypeVirement = "VirementDeMasse",
-                        FichierBeneficaires = null,
-                    };
-
-                    await _dbVirement.CreateAsync(virement);
-                    virementsEffectués.Add(virement);
-                    idsVirements.Add(virement.Id);
-                }
-
-                // Enregistrement des frais
-                var fraisCompte = new FraisCompte
-                {
-                    RIB = dto.RibEmetteur,
-                    type = "TVA sur commision Virement multiple",
-                    Date = DateTime.Now,
-                    Montant = frais,
-                    IdsVirements = idsVirements // Utilisation de la propriété NotMapped
-                };
-
-                await _dbFraisCompte.CreateAsync(fraisCompte);
-
-                await _dbVirement.CommitTransactionAsync();
-
-                _logger.LogInformation("Virement en masse réussi. Envoi des SMS en cours...");
-
-                // Récupérer le solde mis à jour de l'émetteur
-                var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(dto.RibEmetteur);
-                var dateVirement = DateTime.Now.ToString("dd/MM");
-                var telephoneEmetteur = client.Telephone;
-                var montantTotal = frais + totalVirement;
-                // Préparer le SMS pour l'émetteur
                 var smsRequestEmetteur = new
                 {
-                    mobile = telephoneEmetteur,
-                    message = $"Le solde de votre compte {dto.RibEmetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT DE MASSE ÉMIS: -{montantTotal} TND"
+                    mobile = client.Telephone,
+                    message = $"Votre code OTP pour le virement est : {otp}"
                 };
 
-                // Créer le client REST
                 var options = new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 };
                 var clientrest = new RestClient(options);
 
-                // Envoyer le SMS à l'émetteur
                 var requestEmetteur = new RestRequest("/Send", Method.Post);
                 requestEmetteur.AddHeader("Content-Type", "application/json");
                 requestEmetteur.AddJsonBody(smsRequestEmetteur);
                 await clientrest.ExecuteAsync(requestEmetteur);
 
-                // SMS pour chaque bénéficiaire
-                foreach (var virement in virementsEffectués)
+                return Ok(new { message = "OTP envoyé par SMS. Veuillez le saisir pour valider le virement." });
+            }
+            else
+            {
+                // Vérification de l'OTP saisi
+                if (!_otpStore.ContainsKey(userId) || _otpStore[userId] != dto.Otp)
                 {
-                    var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(virement.RIB_Recepteur);
-                    var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
-                    var reponse = await _httpClient.GetAsync(apiurl);
-                    var clientRecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+                    return BadRequest(new { message = "OTP incorrect. Veuillez réessayer." });
+                }
 
-                    if (clientRecepteur != null)
+                // Si OTP correct, on peut supprimer le code stocké
+                _otpStore.Remove(userId);
+
+                // On effectue maintenant le virement
+                await _dbVirement.BeginTransactionAsync();
+                try
+                {
+                    var virementsEffectués = new List<Virement>();
+                    var idsVirements = new List<int>();
+
+                    foreach (var beneficiaire in dto.Beneficiaires)
                     {
-                        var telephoneRecepteur = clientRecepteur.Telephone;
-                        var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(virement.RIB_Recepteur);
-
-                        var smsRequestRecepteur = new
+                        var ribRecepteur = await GetRibById(beneficiaire.IdBeneficiaire);
+                        if (string.IsNullOrEmpty(ribRecepteur))
                         {
-                            mobile = telephoneRecepteur,
-                            message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU: +{virement.Montant} TND"
+                            await _dbVirement.RollbackTransactionAsync();
+                            return BadRequest(new { message = $"RIB introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
+                        }
+
+                        var recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == ribRecepteur)).FirstOrDefault();
+                        if (recepteur == null)
+                        {
+                            await _dbVirement.RollbackTransactionAsync();
+                            return BadRequest(new { message = $"Compte destinataire introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
+                        }
+
+                        // Débit/Crédit
+                        emetteur.Solde -= beneficiaire.Montant;
+                        if (idsVirements.Count == 0)
+                        {
+                            emetteur.Solde -= frais;
+                        }
+                        recepteur.Solde += beneficiaire.Montant;
+
+                        if (emetteur.Solde < 0)
+                        {
+                            emetteur.DecouvertAutorise += emetteur.Solde;
+                        }
+                        
+                        await _dbCompte.UpdateAsync(emetteur);
+                        await _dbCompte.UpdateAsync(recepteur);
+                        await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
+
+                        var virement = new Virement
+                        {
+                            RIB_Emetteur = dto.RibEmetteur,
+                            RIB_Recepteur = ribRecepteur,
+                            Motif = dto.Motif,
+                            Description = dto.Description,
+                            DateVirement = DateTime.Now,
+                            Montant = beneficiaire.Montant,
+                            Statut = "Réussi",
+                            TypeVirement = "VirementDeMasse",
+                            FichierBeneficaires = null,
+                            OtpCode = dto.Otp 
                         };
 
-                        var requestRecepteur = new RestRequest("/Send", Method.Post);
-                        requestRecepteur.AddHeader("Content-Type", "application/json");
-                        requestRecepteur.AddJsonBody(smsRequestRecepteur);
-                        await clientrest.ExecuteAsync(requestRecepteur);
+                        await _dbVirement.CreateAsync(virement);
+                        virementsEffectués.Add(virement);
+                        idsVirements.Add(virement.Id);
                     }
+                    emetteur.Solde -= 0.885m;
+                    await _dbCompte.UpdateAsync(emetteur);
+                    var CommisionCompte = new FraisCompte
+                    {
+                        RIB = dto.RibEmetteur,
+                        type = "commision sur Virement multiple",
+                        Date = DateTime.Now,
+                        Montant = frais,
+                        IdsVirements = idsVirements
+                    };
+                    var TVACompte = new FraisCompte
+                    {
+                        RIB = dto.RibEmetteur,
+                        type = "TVA sur commision Virement multiple",
+                        Date = DateTime.Now,
+                        Montant = 0.885m,
+                        IdsVirements = idsVirements
+                    };
+
+                    await _dbFraisCompte.CreateAsync(CommisionCompte);
+                    await _dbFraisCompte.CreateAsync(TVACompte);
+
+                    await _dbVirement.CommitTransactionAsync();
+
+                    _logger.LogInformation("Virement en masse réussi. Envoi des SMS en cours...");
+
+                    var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(dto.RibEmetteur);
+                    var dateVirement = DateTime.Now.ToString("dd/MM");
+                    var telephoneEmetteur = client.Telephone;
+                    var montantTotal = frais + totalVirement+ 0.585m;
+
+                    var smsRequestConfirm = new
+                    {
+                        mobile = telephoneEmetteur,
+                        message = $"Le solde de votre compte {dto.RibEmetteur} au {dateVirement} est {soldeEmetteur} TND. VIREMENT DE MASSE ÉMIS: -{montantTotal} TND"
+                    };
+                    var options = new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 };
+                    var clientrest = new RestClient(options);
+                    var requestConfirm = new RestRequest("/Send", Method.Post);
+                    requestConfirm.AddHeader("Content-Type", "application/json");
+                    requestConfirm.AddJsonBody(smsRequestConfirm);
+                    await clientrest.ExecuteAsync(requestConfirm);
+
+                    foreach (var virement in virementsEffectués)
+                    {
+                        var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(virement.RIB_Recepteur);
+                        var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+                        var reponse = await _httpClient.GetAsync(apiurl);
+                        var clientRecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+
+                        if (clientRecepteur != null)
+                        {
+                            var telephoneRecepteur = clientRecepteur.Telephone;
+                            var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(virement.RIB_Recepteur);
+
+                            var smsRequestRecepteur = new
+                            {
+                                mobile = telephoneRecepteur,
+                                message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. VIREMENT REÇU: +{virement.Montant} TND"
+                            };
+
+                            var requestRecepteur = new RestRequest("/Send", Method.Post);
+                            requestRecepteur.AddHeader("Content-Type", "application/json");
+                            requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                            await clientrest.ExecuteAsync(requestRecepteur);
+                        }
+                    }
+
+                    _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
+                    return Ok(new
+                    {
+                        message = "Virements enregistrés avec succès.",
+                        virementsEffectués,
+                        frais = frais,
+                        nombreVirements = idsVirements.Count
+                    });
                 }
-                _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
-
-
-
-
-
-
-
-
-
-
-                return Ok(new
+                catch (Exception ex)
                 {
-                    message = "Virements enregistrés avec succès.",
-                    virementsEffectués,
-                    frais = frais,
-                    nombreVirements = idsVirements.Count
-                });
-            }
-            catch (Exception ex)
-            {
-                await _dbVirement.RollbackTransactionAsync();
-                return StatusCode(500, new { message = "Erreur lors du traitement du virement.", erreur = ex.Message });
+                    await _dbVirement.RollbackTransactionAsync();
+                    return StatusCode(500, new { message = "Erreur lors du traitement du virement.", erreur = ex.Message });
+                }
             }
         }
+
+
+
+
+
+
+
+
+
+
+        /* private async Task<IActionResult> VirementDeMasseParFormulaire(VirementMasseFormulaireDto dto)
+          {
+              var virementsEffectués = new List<Virement>();
+              var userId = GetUserIdFromToken();
+
+              var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+              //  compte émetteur
+              var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == dto.RibEmetteur)).FirstOrDefault();
+              if (emetteur == null)
+              {
+                  return BadRequest(new { message = "Compte émetteur introuvable." });
+              }
+
+              // Calcul du total des virements
+              decimal totalVirement = dto.Beneficiaires.Sum(b => b.Montant);
+
+              // Calcul des frais
+              int nombreBeneficiaires = dto.Beneficiaires.Count;
+              decimal frais = 5.0m; // Frais de base pour les 5 premiers bénéficiaires
+              if (nombreBeneficiaires > 5)
+              {
+                  frais += (nombreBeneficiaires - 5) * 0.5m;
+              }
+
+              // Calcul du solde disponible (en tenant compte du découvert)
+              //decimal soldeDisponible = emetteur.Solde + emetteur.DecouvertAutorise;
+              decimal soldeDisponible = emetteur.Solde + emetteur.DecouvertAutorise.Value;
+
+
+              // Vérification du solde disponible
+              if (soldeDisponible < (totalVirement + frais))
+              {
+                  return BadRequest(new { message = $"Solde insuffisant, y compris avec le découvert autorisé. Montant nécessaire : {totalVirement + frais}" });
+              }
+      await _dbVirement.BeginTransactionAsync();
+              try
+              {
+                  var idsVirements = new List<int>();
+
+                  foreach (var beneficiaire in dto.Beneficiaires)
+                  {
+                      var ribRecepteur = await GetRibById(beneficiaire.IdBeneficiaire);
+                      if (string.IsNullOrEmpty(ribRecepteur))
+                      {
+                          await _dbVirement.RollbackTransactionAsync();
+                          return BadRequest(new { message = $"RIB introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
+                      }
+
+                      var recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == ribRecepteur)).FirstOrDefault();
+                      if (recepteur == null)
+                      {
+                          await _dbVirement.RollbackTransactionAsync();
+                          return BadRequest(new { message = $"Compte destinataire introuvable pour le bénéficiaire ID {beneficiaire.IdBeneficiaire}." });
+                      }
+
+                      // Débit/Crédit en tenant compte du découvert
+                      emetteur.Solde -= beneficiaire.Montant;
+                      if (idsVirements.Count == 0) // Premier virement, on déduit les frais
+                      {
+                          emetteur.Solde -= frais;
+                      }
+                      recepteur.Solde += beneficiaire.Montant;
+
+                      // Ajustement du découvert autorisé si le solde devient négatif
+                      if (emetteur.Solde < 0)
+                      {
+                          emetteur.DecouvertAutorise += emetteur.Solde; // Réduction du découvert autorisé
+
+                      }
+
+                      await _dbCompte.UpdateAsync(emetteur);
+                      await _dbCompte.UpdateAsync(recepteur);
+                      await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
+
+                      // Création du virement
+                      var virement = new Virement
+                      {
+                          RIB_Emetteur = dto.RibEmetteur,
+                          RIB_Recepteur = ribRecepteur,
+                          Motif = dto.Motif,
+                          Description = dto.Description,
+                          DateVirement = DateTime.Now,
+                          Montant = beneficiaire.Montant,
+                          Statut = "Réussi",
+                          TypeVirement = "VirementDeMasse",
+                          FichierBeneficaires = null,
+                      };
+
+                      await _dbVirement.CreateAsync(virement);
+                      virementsEffectués.Add(virement);
+                      idsVirements.Add(virement.Id);
+                  }
+
+                  // Enregistrement des frais
+                  var fraisCompte = new FraisCompte
+                  {
+                      RIB = dto.RibEmetteur,
+                      type = "TVA sur commision Virement multiple",
+                      Date = DateTime.Now,
+                      Montant = frais,
+                      IdsVirements = idsVirements // Utilisation de la propriété NotMapped
+                  };
+
+                  await _dbFraisCompte.CreateAsync(fraisCompte);
+
+                  await _dbVirement.CommitTransactionAsync();
+
+                  _logger.LogInformation("Virement en masse réussi. Envoi des SMS en cours...");
+
+                  // Récupérer le solde mis à jour de l'émetteur
+                  var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(dto.RibEmetteur);
+                  var dateVirement = DateTime.Now.ToString("dd/MM");
+                  var telephoneEmetteur = client.Telephone;
+                  var montantTotal = frais + totalVirement;
+                  // Préparer le SMS pour l'émetteur
+                  var smsRequestEmetteur = new
+                  {
+                      mobile = telephoneEmetteur,
+                      message = $"Le solde de votre compte {dto.RibEmetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT DE MASSE ÉMIS: -{montantTotal} TND"
+                  };
+
+                  // Créer le client REST
+                  var options = new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 };
+                  var clientrest = new RestClient(options);
+
+                  // Envoyer le SMS à l'émetteur
+                  var requestEmetteur = new RestRequest("/Send", Method.Post);
+                  requestEmetteur.AddHeader("Content-Type", "application/json");
+                  requestEmetteur.AddJsonBody(smsRequestEmetteur);
+                  await clientrest.ExecuteAsync(requestEmetteur);
+
+                  // SMS pour chaque bénéficiaire
+                  foreach (var virement in virementsEffectués)
+                  {
+                      var idClientRecepteur = await _dbCompte.GetClientIdByRibAsync(virement.RIB_Recepteur);
+                      var apiurl = $"http://localhost:5260/api/Client/{idClientRecepteur}";
+                      var reponse = await _httpClient.GetAsync(apiurl);
+                      var clientRecepteur = await reponse.Content.ReadFromJsonAsync<Client>();
+
+                      if (clientRecepteur != null)
+                      {
+                          var telephoneRecepteur = clientRecepteur.Telephone;
+                          var soldeRecepteur = await _dbCompte.GetSoldeByRIBAsync(virement.RIB_Recepteur);
+
+                          var smsRequestRecepteur = new
+                          {
+                              mobile = telephoneRecepteur,
+                              message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU: +{virement.Montant} TND"
+                          };
+
+                          var requestRecepteur = new RestRequest("/Send", Method.Post);
+                          requestRecepteur.AddHeader("Content-Type", "application/json");
+                          requestRecepteur.AddJsonBody(smsRequestRecepteur);
+                          await clientrest.ExecuteAsync(requestRecepteur);
+                      }
+                  }
+                  _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
+                  return Ok(new
+                  {
+                      message = "Virements enregistrés avec succès.",
+                      virementsEffectués,
+                      frais = frais,
+                      nombreVirements = idsVirements.Count
+                  });
+              }
+              catch (Exception ex)
+              {
+                  await _dbVirement.RollbackTransactionAsync();
+                  return StatusCode(500, new { message = "Erreur lors du traitement du virement.", erreur = ex.Message });
+              }
+          }
+
+
+
+
+
+          */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         private async Task<string?> GetRibById(int idBeneficiaire)
         {
@@ -1076,8 +1576,9 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
+        private static Dictionary<int, string> _OtpStore = new Dictionary<int, string>();
 
-        private async Task<IActionResult> VirementDeMasseTraitement(string fichier)
+        private async Task<IActionResult> VirementDeMasseTraitement(string fichier, string otpSaisi = null)
         {
             if (string.IsNullOrEmpty(fichier) || !System.IO.File.Exists(fichier))
             {
@@ -1127,7 +1628,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 _logger.LogWarning("Compte émetteur introuvable : {RIB}", ribEmetteur);
                 return NotFound(new { message = "Compte émetteur introuvable." });
             }
-
+            var TVA = 0.885m;
             int nombreBeneficiaires = lines.Length - 3;
             decimal frais = 5.0m + Math.Max(0, (nombreBeneficiaires - 5) * 0.5m);
             //decimal soldeDisponible = emetteur.Solde + emetteur.DecouvertAutorise;
@@ -1141,6 +1642,53 @@ namespace STBEverywhere_back_APICompte.Controllers
                     ribEmetteur, soldeDisponible, montantTotal, frais);
                 return BadRequest(new { message = $"Solde insuffisant, y compris avec le découvert autorisé. Montant nécessaire : {montantTotal + frais}" });
             }
+
+
+
+            // ------------- Étape 2 : Si OTP non saisi => Générer et Envoyer
+            if (string.IsNullOrEmpty(otpSaisi))
+            {
+                var otpGenere = _OtpService.GenerateOtp();
+
+                // Sauvegarder OTP temporairement
+                _otpStore[userId] = otpGenere;
+
+                // Envoyer SMS
+                await _OtpService.SendOtpAsync( client.Telephone, otpGenere);
+
+                return Ok(new
+                {
+                    message = "Un OTP a été envoyé à votre téléphone. Veuillez le saisir pour confirmer l'opération.",
+                    besoinOtp = true
+                });
+            }
+
+            // ------------- Étape 3 : Valider l’OTP
+            if (!_otpStore.ContainsKey(userId))
+            {
+                return BadRequest(new { message = "Aucun OTP généré pour cet utilisateur." });
+            }
+
+            var otpAttendu = _otpStore[userId];
+            var otpValide = _OtpService.ValidateOtp(otpAttendu, otpSaisi);
+
+            if (!otpValide)
+            {
+                return BadRequest(new { message = "OTP invalide. Veuillez réessayer." });
+            }
+
+            // ------------- Étape 4 : OTP validé, on peut supprimer
+            _otpStore.Remove(userId);
+
+
+
+
+
+
+
+
+            _logger.LogInformation("OTP validé pour userId {userId}. Début du traitement virement.", userId);
+
 
             await _dbVirement.BeginTransactionAsync();
             _logger.LogInformation("Transaction de virement en masse commencée.");
@@ -1213,7 +1761,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                     emetteur.Solde -= montant;
                     if (i == 2) // Premier virement, on déduit les frais
                     {
-                        emetteur.Solde -= frais;
+                        emetteur.Solde -= frais+TVA;
                     }
                     beneficiaire.Solde += montant;
 
@@ -1237,24 +1785,39 @@ namespace STBEverywhere_back_APICompte.Controllers
                         TypeVirement = "VirementDeMasse",
                         FichierBeneficaires = fichier,
                         Description = $"Virement de masse depuis {ribEmetteur}",
-                        Motif = motif
+                        Motif = motif,
+                        OtpCode = otpSaisi
                     };
 
                     await _dbVirement.CreateAsync(virement);
                     virementsEffectués.Add(virement);
                     idsVirements.Add(virement.Id);
                     totalDébité += montant;
+
+
                 }
 
-                var fraisCompte = new FraisCompte
+                var CommissionCompte = new FraisCompte
                 {
                     RIB = ribEmetteur,
-                    type = "TVA sur commision Virement multiple",
+                    type = "commision sur Virement multiple",
                     Date = DateTime.Now,
                     Montant = frais,
                     IdsVirements = idsVirements
                 };
-                await _dbFraisCompte.CreateAsync(fraisCompte);
+
+                var TVACompte = new FraisCompte
+                {
+                    RIB = ribEmetteur,
+                    type = "TVA sur commision Virement multiple",
+                    Date = DateTime.Now,
+                    Montant = TVA,
+                    IdsVirements = idsVirements
+                };
+
+                await _dbFraisCompte.CreateAsync(CommissionCompte);
+                await _dbFraisCompte.CreateAsync(TVACompte);
+
 
                 if (totalDébité != montantTotal)
                 {
@@ -1269,7 +1832,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(ribEmetteur);
                 var dateVirement = DateTime.Now.ToString("dd/MM");
                 var telephoneEmetteur = client.Telephone;
-                var montantTotalAvecFrais = montantTotal + frais;
+                var montantTotalAvecFrais = montantTotal + frais+TVA;
 
                 // Préparer le SMS pour l'émetteur
                 var smsRequestEmetteur = new
