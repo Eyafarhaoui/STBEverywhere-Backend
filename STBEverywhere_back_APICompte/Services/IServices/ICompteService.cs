@@ -8,7 +8,7 @@ namespace STBEverywhere_back_APICompte.Services.IServices
     public interface ICompteService
     {
         Task<List<Compte>> GetAllAsync(Expression<Func<Compte, bool>> filter = null);
-        //Task<Compte> GetByRibAsync(string rib);
+        Task<Compte> GetByRibAsync(string rib);
         Task<Client> GetClientByRIBAsync(string rib);
         Task<Compte> UpdateAsync(Compte entity);
         Task<Compte> CreateAsync(Compte entity);

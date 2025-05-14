@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using STBEverywhere_Back_SharedModels.Models.enums;
+using System.Text;
+using System.Text.Json;
 
 namespace STBEverywhere_back_APICarte.Services
 {
@@ -49,19 +51,41 @@ namespace STBEverywhere_back_APICarte.Services
                             {
                                 _logger.LogInformation("Envoi d'email pour la demande : {DemandeId}", demande.Iddemande);
 
-                                // Envoyer l'email
-                                await carteService.SendEmailAsync(
-                                    demande.Email,
-                                    "Votre carte est disponible à l'agence",
-                                    $"Votre carte {demande.NomCarte} est disponible à l'agence."
-                                );
+                                // Construire l'objet email à envoyer
+                                var emailRequest = new
+                                {
+                                    to = demande.Email,
+                                    subject = "Votre carte est disponible à l'agence",
+                                    content = $"Votre carte {demande.NomCarte} est disponible à l'agence."
+                                };
 
-                                // Mettre à jour le champ EmailEnvoye
-                                await carteService.UpdateEmailEnvoyeAsync(demande.Iddemande, true);
+                                using (var httpClient = new HttpClient())
+                                {
+                                    var json = JsonSerializer.Serialize(emailRequest);
+                                    var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                                _logger.LogInformation("Email envoyé pour la demande : {DemandeId}", demande.Iddemande);
+                                    _logger.LogInformation("Appel de l'envoi d'email à {To} avec sujet {Subject}", demande.Email, emailRequest.subject);
+                                    _logger.LogInformation("Body email : {Body}", emailRequest.content);
+
+                                    var response = await httpClient.PostAsync("http://localhost:5203/api/email/send", content);
+
+                                    if (response.IsSuccessStatusCode)
+                                    {
+                                        // Mettre à jour le champ EmailEnvoye
+                                        await carteService.UpdateEmailEnvoyeAsync(demande.Iddemande, true);
+
+                                        _logger.LogInformation("Email envoyé pour la demande : {DemandeId}", demande.Iddemande);
+                                    }
+                                    else
+                                    {
+                                        var errorContent = await response.Content.ReadAsStringAsync();
+                                        _logger.LogError("Erreur lors de l'envoi de l'email pour la demande {DemandeId} : {Error}", demande.Iddemande, errorContent);
+                                        // Tu peux décider de throw une exception ou juste continuer
+                                    }
+                                }
                             }
                         }
+
                     }
                 }
                 catch (Exception ex)

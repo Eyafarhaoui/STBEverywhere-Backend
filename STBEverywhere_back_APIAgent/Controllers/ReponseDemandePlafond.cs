@@ -41,7 +41,7 @@ namespace STBEverywhere_back_APIAgent.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> RepondreDemandePlafond([FromBody] ReponseDemandeAugmentationPlafondDto dto) // Changé 'reponse' en 'dto'
+        public async Task<IActionResult> RepondreDemandePlafond([FromBody] ReponseDemandeAugmentationPlafondDto dto) 
         {
             try
             {

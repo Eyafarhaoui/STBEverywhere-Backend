@@ -59,6 +59,8 @@ builder.Services.AddScoped<IVirementRepository, VirementRepository>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICompteService, CompteService>();
+builder.Services.AddScoped<IOtpService, OtpService>();
+
 builder.Services.AddScoped<IVirementRepository, VirementRepository>();
 
 builder.Services.AddScoped<IBeneficiaireRepository, BeneficiaireRepository>();

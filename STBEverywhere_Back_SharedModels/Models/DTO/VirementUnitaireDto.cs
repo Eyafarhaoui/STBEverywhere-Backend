@@ -11,6 +11,9 @@
         public string TypeVirement { get; set; }
 
         public int? IdBeneficiaire { get; set; } // avec les virements vers d'autres comptes
+
+        public string? OtpCode { get; set; } // Pour validation
+        public int Id { get; set; }
     }
 }
 

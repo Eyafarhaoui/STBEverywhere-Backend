@@ -28,6 +28,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Microsoft.AspNetCore.Authorization;
+using System.Text;
+using System.Text.Json;
+using RestSharp;
+using STBEverywhere_back_APIClient.Repositories;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -44,7 +48,7 @@ namespace STBEverywhere_back_APIClient.Controllers
         private readonly EmailService _emailService;
         private readonly IWebHostEnvironment _environment;
         private readonly INotificationService _notificationService;
-
+        private readonly IClientRepository _clientRepository;
         public ClientController(
             IClientService clientService,
             IUserRepository userRepository,
@@ -53,7 +57,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             ApplicationDbContext context,
             ILogger<ClientController> logger,
             EmailService emailService,
-            INotificationService notificationService)
+            INotificationService notificationService, IClientRepository clientRepository)
         {
             _clientService = clientService;
             _context = context;
@@ -63,6 +67,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             _emailService = emailService;
             _environment = environment;
             _notificationService = notificationService;
+            _clientRepository = clientRepository;
         }
 
 
@@ -649,7 +654,24 @@ namespace STBEverywhere_back_APIClient.Controllers
             }
         }
 
-        // ClientController.cs
+
+
+        // Envoyer le code par email
+        /*var emailSubject = "Code de vérification pour changement de mot de passe";
+        var emailBody = $"Votre code de vérification est : {otpCode}\nCe code expirera dans 15 minutes.";
+
+        await _emailService.SendEmailAsync(user.Email, emailSubject, emailBody);
+
+        return Ok(new { message = "Un code de vérification a été envoyé à votre adresse email." });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Erreur lors de l'envoi du code OTP");
+        return StatusCode(500, new { message = "Une erreur est survenue lors de l'envoi du code de vérification." });
+    }*/
+
+
+
         [HttpPost("request-password-change-otp")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -674,22 +696,50 @@ namespace STBEverywhere_back_APIClient.Controllers
                 user.ResetPasswordTokenExpiry = otpExpiry;
                 await _context.SaveChangesAsync();
 
-                // Envoyer le code par email
+
+
+
                 var emailSubject = "Code de vérification pour changement de mot de passe";
                 var emailBody = $"Votre code de vérification est : {otpCode}\nCe code expirera dans 15 minutes.";
 
-                await _emailService.SendEmailAsync(user.Email, emailSubject, emailBody);
+                // 🔥 Appel HTTP POST vers ton propre controller
+                var emailRequest = new
+                {
+                    to = user.Email,
+                    subject = emailSubject,
+                    content = emailBody
+                };
 
-                return Ok(new { message = "Un code de vérification a été envoyé à votre adresse email." });
+                using (var httpClient = new HttpClient())
+                {
+                    var json = JsonSerializer.Serialize(emailRequest);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+                    _logger.LogInformation("Appel de l'envoi d'email à {To} avec sujet {Subject}", user.Email, emailSubject);
+                    _logger.LogInformation("Body email : {Body}", emailBody);
+
+
+                    var response = await httpClient.PostAsync("http://localhost:5203/api/email/send", content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return Ok(new { message = "Un code de vérification a été envoyé à votre adresse email." });
+                    }
+                    else
+                    {
+                        _logger.LogError("Erreur lors de l'envoi de l'email : {Error}", response.Content.ReadAsStringAsync().Result);
+                        return StatusCode(500, new { message = "Erreur lors de l'envoi du code de vérification." });
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erreur lors de l'envoi du code OTP");
                 return StatusCode(500, new { message = "Une erreur est survenue lors de l'envoi du code de vérification." });
             }
+
         }
 
-        [HttpPost("change-password-with-otp")]
+            [HttpPost("change-password-with-otp")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -740,13 +790,42 @@ namespace STBEverywhere_back_APIClient.Controllers
 
                 await _context.SaveChangesAsync();
 
-                // Envoyer une confirmation par email
                 var emailSubject = "Confirmation de changement de mot de passe";
                 var emailBody = "Votre mot de passe a été changé avec succès.";
 
-                await _emailService.SendEmailAsync(user.Email, emailSubject, emailBody);
 
-                return Ok(new { message = "Mot de passe changé avec succès." });
+                var emailRequest = new
+                {
+                    to = user.Email,
+                    subject = emailSubject,
+                    content = emailBody
+                };
+
+                using (var httpClient = new HttpClient())
+                {
+                    var json = JsonSerializer.Serialize(emailRequest);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var response = await httpClient.PostAsync("http://localhost:5203/api/email/send", content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return Ok(new { message = "Un code de vérification a été envoyé à votre adresse email." });
+                    }
+                    else
+                    {
+                        _logger.LogError("Erreur lors de l'envoi de l'email : {Error}", response.Content.ReadAsStringAsync().Result);
+                        return StatusCode(500, new { message = "Erreur lors de l'envoi du code de vérification." });
+                    }
+
+                    // Envoyer une confirmation par email
+                    /*var emailSubject = "Confirmation de changement de mot de passe";
+                    var emailBody = "Votre mot de passe a été changé avec succès.";
+
+                    await _emailService.SendEmailAsync(user.Email, emailSubject, emailBody);*/
+
+                    return Ok(new { message = "Mot de passe changé avec succès." });
+                }
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -759,6 +838,8 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return StatusCode(500, new { message = "Une erreur est survenue lors du changement de mot de passe." });
             }
         }
+
+
 
         // ClientController.cs
 
@@ -1287,6 +1368,29 @@ Les documents sont joints à cet email.";
 
 
 
+        [HttpGet("getDemandesKYCByAgence/{agenceId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+
+        public async Task<List<ModificationRequest>> GetDemandesKYCByAgenceIdAsync(string agenceId)
+        {
+            // 1. Récupérer toutes les demandes KYC
+            var toutesLesDemandes = await _context.ModificationRequests.ToListAsync();
+
+            var result = new List<ModificationRequest>();
+
+            // 2. Pour chaque demande, vérifier si le client appartient à l'agence
+            foreach (var demande in toutesLesDemandes)
+            {
+                var client = await _clientRepository.GetClientByIdAsync(demande.ClientId);
+                if (client != null && client.AgenceId == agenceId)
+                {
+                    result.Add(demande);
+                }
+            }
+
+            return result;
+        }
 
 
 

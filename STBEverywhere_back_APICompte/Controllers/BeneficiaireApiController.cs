@@ -25,12 +25,13 @@ namespace STBEverywhere_back_APIClient.Controllers
         private readonly ICompteService _compteService;
 
 
-        public BeneficiaireApiController(IUserRepository userRepository,IHttpContextAccessor httpContextAccessor, ApplicationDbContext context, ILogger<BeneficiaireApiController> logger)
+        public BeneficiaireApiController(ICompteService compteService,IUserRepository userRepository,IHttpContextAccessor httpContextAccessor, ApplicationDbContext context, ILogger<BeneficiaireApiController> logger)
         {
             _context = context;
             _logger = logger;
             _userRepository = userRepository;
             _httpContextAccessor = httpContextAccessor;
+            _compteService = compteService;
 
         }
 
@@ -62,6 +63,13 @@ namespace STBEverywhere_back_APIClient.Controllers
                 if (string.IsNullOrEmpty(CreateBenefDto.Prenom))
                 {
                     return BadRequest("Le prénom est obligatoire pour une personne physique.");
+                }
+
+                // 3. Vérifier si le RIB existe dans la table Comptes
+                var compte = await _compteService.GetByRibAsync(CreateBenefDto.RIBCompte);
+                if (compte == null)
+                {
+                    return BadRequest("RIB introuvable");
                 }
 
                 // 4. Créer un nouveau bénéficiaire

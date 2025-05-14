@@ -91,6 +91,8 @@ app.Use(async (context, next) =>
         path.StartsWithSegments("/api/Client/register") ||
         path.StartsWithSegments("/api/client/upload-documents") ||
         path.StartsWithSegments("/api/compte/GetSoldeByRIB") ||
+        path.StartsWithSegments("/api/AgenceApi") ||
+         path.StartsWithSegments("/api/AgenceApi/byId") ||
         path.StartsWithSegments("/api/compte/GetByRIB"))
     {
         await next();

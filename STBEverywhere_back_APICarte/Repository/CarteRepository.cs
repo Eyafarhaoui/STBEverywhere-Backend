@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using STBEverywhere_Back_SharedModels.Models.enums;
+using STBEverywhere_Back_SharedModels;
 
 namespace STBEverywhere_back_APICarte.Repository
 {
@@ -47,6 +48,7 @@ namespace STBEverywhere_back_APICarte.Repository
             return await _context.SaveChangesAsync() > 0;
         }
 
+       
         public async Task<IEnumerable<Carte>> GetCartesByRIBAsync(string rib)
         {
             return await _context.Cartes

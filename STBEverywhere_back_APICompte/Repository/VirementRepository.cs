@@ -30,7 +30,12 @@ namespace STBEverywhere_back_APICompte.Repository
         }
 
 
-        
+        public async Task<Virement> GetByIdAsync(int id) 
+        {
+          
+            return await _db.Set<Virement>().FindAsync(id);
+        }
+
 
 
         /* public async Task CreateAsync(Virement virement)

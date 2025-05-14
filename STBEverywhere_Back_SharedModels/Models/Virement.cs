@@ -37,8 +37,8 @@ namespace  STBEverywhere_Back_SharedModels
         public string? FichierBeneficaires { get; set; } // Nullable
 
 
+        public string? OtpCode { get; set; }
 
-      
 
     }
 
