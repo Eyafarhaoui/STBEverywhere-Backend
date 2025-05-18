@@ -32,6 +32,7 @@ using System.Text;
 using System.Text.Json;
 using RestSharp;
 using STBEverywhere_back_APIClient.Repositories;
+using System.Numerics;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -657,7 +658,8 @@ namespace STBEverywhere_back_APIClient.Controllers
 
 
         // Envoyer le code par email
-        /*var emailSubject = "Code de vérification pour changement de mot de passe";
+        /*var emailSubject
+         * = "Code de vérification pour changement de mot de passe";
         var emailBody = $"Votre code de vérification est : {otpCode}\nCe code expirera dans 15 minutes.";
 
         await _emailService.SendEmailAsync(user.Email, emailSubject, emailBody);
@@ -681,10 +683,24 @@ namespace STBEverywhere_back_APIClient.Controllers
             {
                 var userId = GetUserIdFromToken();
                 var user = await _context.Users.FindAsync(userId);
-
+               
                 if (user == null)
                 {
                     return NotFound(new { message = "Utilisateur non trouvé." });
+                }
+
+                string salutation = "";
+                string destinataire = "";
+                if (user.Role == UserRole.Client)
+                {
+                    var client = await _userRepository.GetClientByUserIdAsync(userId);
+                    salutation = client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+                    destinataire = $"{salutation} {client?.Nom} {client?.Prenom}";
+                }
+                else if (user.Role == UserRole.Agent)
+                {
+                    var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+                    destinataire = $"Bonjour {agent.Nom}";
                 }
 
                 // Générer un code OTP (6 chiffres, valide 15 minutes)
@@ -699,8 +715,33 @@ namespace STBEverywhere_back_APIClient.Controllers
 
 
 
-                var emailSubject = "Code de vérification pour changement de mot de passe";
-                var emailBody = $"Votre code de vérification est : {otpCode}\nCe code expirera dans 15 minutes.";
+                var emailSubject = "Demande de changement de mot de passe STB Everywhere";
+                var emailBody = $@"
+<p><strong>{destinataire},</strong></p>
+
+<p>Nous vous informons que votre code de vérification est : <strong>{otpCode}</strong>.</p>
+
+<p>Ce code est valable pour une durée de <strong>15 minutes</strong>.</p>
+
+<p><span style='color: red;'><strong>Ce code est strictement confidentiel. Ne le communiquez à personne, y compris aux représentants de la banque.</strong></span></p>
+
+<p>Pour toute question relative à cette procédure, votre conseiller reste à votre entière disposition.</p>
+
+<p>Nous vous remercions pour votre confiance.</p>
+
+<p>Cordialement,<br>
+<strong>Le Service Client</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
+
+
+
+
+
+
 
                 // 🔥 Appel HTTP POST vers ton propre controller
                 var emailRequest = new
@@ -756,6 +797,21 @@ namespace STBEverywhere_back_APIClient.Controllers
                     return Unauthorized(new { message = "Utilisateur non trouvé." });
                 }
 
+
+                string salutation = "";
+                string destinataire = "";
+                if (user.Role == UserRole.Client)
+                {
+                    var client = await _userRepository.GetClientByUserIdAsync(userId);
+                    salutation = client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+                    destinataire = $"{salutation} {client?.Nom} {client?.Prenom}";
+                }
+                else if (user.Role == UserRole.Agent)
+                {
+                    var agent = await _userRepository.GetAgentByUserIdAsync(userId);
+                    destinataire = $"Bonjour {agent.Nom}";
+                }
+
                 // 2. Vérifier le code OTP
                 if (user.ResetPasswordToken != changePasswordDto.OTPCode ||
                     user.ResetPasswordTokenExpiry < DateTime.UtcNow)
@@ -791,7 +847,27 @@ namespace STBEverywhere_back_APIClient.Controllers
                 await _context.SaveChangesAsync();
 
                 var emailSubject = "Confirmation de changement de mot de passe";
-                var emailBody = "Votre mot de passe a été changé avec succès.";
+
+                var emailBody = $@"
+<p><strong>{destinataire},</strong></p>
+
+
+<p>Nous vous confirmons que votre mot de passe a été modifié avec succès.</p>
+
+<p>Si vous n’êtes pas à l’origine de cette opération, nous vous invitons à contacter immédiatement notre service client ou votre conseiller dédié.</p>
+
+<p>Nous vous rappelons que vos identifiants sont strictement personnels et confidentiels. Ne les communiquez en aucun cas, même à un représentant de la banque.</p>
+
+<p>Merci pour votre confiance.</p>
+
+<p>Cordialement,<br>
+<strong>Le Service Client</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
+
 
 
                 var emailRequest = new
@@ -1247,17 +1323,30 @@ namespace STBEverywhere_back_APIClient.Controllers
                     attachments.Add(Path.Combine(clientUploadsPath, demand.DomicileFrancePath));
                 }
 
-                var emailSubject = "Nouvelle demande Pack Student";
+                var emailSubject = "Transmission d'une demande Pack Student – Client STB";
+
                 var emailBody = $@"
-Un client STB veut s'inscrire au pack student.
+<p><strong>Madame, Monsieur,</strong></p>
 
-Détails de la demande:
+<p>Nous vous prions de bien vouloir trouver ci-dessous les informations relatives à une nouvelle demande d’adhésion au <strong>Pack Student</strong> émise par l’un de nos clients :</p>
 
-- Nom Client: {demand.Client.Nom} {demand.Client.Prenom}
-- Agence sélectionnée: {demand.SelectedAgency}
-- Date de soumission: {demand.SubmissionDate.ToString("dd/MM/yyyy HH:mm")}
+<ul>
+    <li><strong>Nom du client :</strong> {demand.Client.Nom} {demand.Client.Prenom}</li>
+    <li><strong>Agence STB sélectionnée :</strong> {demand.SelectedAgency}</li>
+    <li><strong>Date de soumission :</strong> {demand.SubmissionDate.ToString("dd/MM/yyyy HH:mm")}</li>
+</ul>
 
-Les documents sont joints à cet email.";
+<p>Les documents justificatifs requis sont joints à cet email pour traitement.</p>
+
+<p>Nous restons à votre disposition pour toute information complémentaire.</p>
+
+<p>Cordialement,<br>
+<strong>Direction des Partenariats</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
 
                 await _emailService.SendEmailWithAttachmentsAsync(
                     "guesmii.ikram@gmail.com",
@@ -1318,17 +1407,31 @@ Les documents sont joints à cet email.";
                     attachments.Add(Path.Combine(clientUploadsPath, demand.VisaRegistrationPath));
                 }
 
-                var emailSubject = "Nouvelle demande Pack Elyssa";
+                var emailSubject = "Transmission d'une demande Pack Elyssa – Client STB";
+
                 var emailBody = $@"
-Un client STB veut s'inscrire au pack Elyssa.
+<p><strong>Madame, Monsieur,</strong></p>
 
-Détails de la demande:
+<p>Nous vous prions de bien vouloir trouver ci-dessous les informations relatives à une nouvelle demande d’adhésion au <strong>Pack Elyssa</strong> émise par l’un de nos clients :</p>
 
-- Nom Client: {demand.Client.Nom} {demand.Client.Prenom}
-- Agence sélectionnée: {demand.SelectedAgency}
-- Date de soumission: {demand.SubmissionDate.ToString("dd/MM/yyyy HH:mm")}
+<ul>
+    <li><strong>Nom du client :</strong> {demand.Client.Nom} {demand.Client.Prenom}</li>
+    <li><strong>Agence STB sélectionnée :</strong> {demand.SelectedAgency}</li>
+    <li><strong>Date de soumission :</strong> {demand.SubmissionDate.ToString("dd/MM/yyyy HH:mm")}</li>
+</ul>
 
-Les documents sont joints à cet email.";
+<p>Les documents justificatifs requis sont joints à cet email pour traitement.</p>
+
+<p>Nous restons à votre disposition pour toute information complémentaire.</p>
+
+<p>Cordialement,<br>
+<strong>Direction des Partenariats</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
+
 
                 await _emailService.SendEmailWithAttachmentsAsync(
                     "guesmii.ikram@gmail.com",

@@ -2,7 +2,10 @@
 using Chatbot.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Chatbot.Controllers
@@ -66,6 +69,54 @@ namespace Chatbot.Controllers
                 return StatusCode(500, new { error = ex.Message });
             }
         }
+
+
+
+
+        public class Chatrequest
+        {
+            public string Message { get; set; }
+        }
+
+
+        [HttpPost, Route("api/students/chat")]
+        public async Task<IActionResult> ChatWithGPT([FromBody] Chatrequest request)
+        {
+            if (request == null || request.Message == null /*|| request.Message.Count == 0*/)
+            {
+                return BadRequest("Requête invalide.");
+            }
+
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", "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");
+            var payload = new
+            {
+                model = "gpt-3.5-turbo",
+                messages = request.Message
+            };
+
+            var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
+
+            try
+            {
+                var response = await httpClient.PostAsync("https://api.openai.com/v1/chat/completions", content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                return StatusCode((int)response.StatusCode, responseContent);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Erreur serveur : " + ex.Message);
+            }
+        }
+
+
+
+
+
+
+
 
         [HttpPost("reload")]
         public async Task<IActionResult> ReloadData()

@@ -321,7 +321,8 @@ namespace STBEverywhere_back_APICarte.Services
             };
         }
 
-        public async Task SendEmailAsync(string email, string subject, string message)
+        public async Task 
+            Async(string email, string subject, string message)
         {
             try
             {
@@ -511,5 +512,9 @@ namespace STBEverywhere_back_APICarte.Services
             }
         }
 
+        public Task SendEmailAsync(string email, string subject, string message)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -25,7 +25,8 @@ namespace STBEverywhere_back_APIAgent.Service
         private readonly string _smtpUser = "farhaouieya@gmail.com";
         private readonly string _smtpPass = "lyxz bipo hllq gcra";
 
-        public async Task<bool> SendEmailAsync(string toEmail, string subject, string message)
+        public async Task<bool> 
+            Async(string toEmail, string subject, string message)
         {
             try
             {

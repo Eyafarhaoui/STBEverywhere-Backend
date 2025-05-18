@@ -258,7 +258,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             var smsRequestRecepteur = new
             {
                 mobile = clientrecepteur.Telephone,
-                message = $"Le solde de votre compte {recepteur.RIB} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu: +{virementDto.Montant} TND"
+                message = $"Le solde de votre compte {recepteur.RIB} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT Reçu:%2B{virementDto.Montant} TND"
             };
 
             var clientrest = new RestClient(new RestClientOptions("http://localhost:5203") { MaxTimeout = -1 });
@@ -1089,7 +1089,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                             var smsRequestRecepteur = new
                             {
                                 mobile = telephoneRecepteur,
-                                message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. VIREMENT REÇU: +{virement.Montant} TND"
+                                message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. VIREMENT REÇU:%2B{virement.Montant} TND"
                             };
 
                             var requestRecepteur = new RestRequest("/Send", Method.Post);
@@ -1867,7 +1867,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                         var smsRequestRecepteur = new
                         {
                             mobile = telephoneRecepteur,
-                            message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU: +{virement.Montant} TND"
+                            message = $"Le solde de votre compte {virement.RIB_Recepteur} au {dateVirement} est {soldeRecepteur} TND. Dernière opération: VIREMENT REÇU:%2B{virement.Montant} TND"
                         };
 
                         var requestRecepteur = new RestRequest("/Send", Method.Post);
@@ -2994,12 +2994,12 @@ namespace STBEverywhere_back_APICompte.Controllers
 
                 if (filter == "all" || filter == "sent")
                 {
-                    virementsEnvoyes = await _dbVirement.GetAllAsync(v => v.RIB_Emetteur == rib);
+                    virementsEnvoyes = await _dbVirement.GetAllAsync(v => v.RIB_Emetteur == rib && v.Statut == "Réussi");
                 }
 
                 if (filter == "all" || filter == "received")
                 {
-                    virementsRecus = await _dbVirement.GetAllAsync(v => v.RIB_Recepteur == rib);
+                    virementsRecus = await _dbVirement.GetAllAsync(v => v.RIB_Recepteur == rib && v.Statut == "Réussi");
                 }
 
                 var historiqueVirements = new
