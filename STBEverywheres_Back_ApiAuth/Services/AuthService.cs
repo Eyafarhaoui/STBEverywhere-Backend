@@ -1,4 +1,5 @@
-﻿using Microsoft.IdentityModel.Tokens;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.IdentityModel.Tokens;
 using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_back_APIClient.Services;
 using STBEverywhere_Back_SharedModels;
@@ -16,15 +17,16 @@ namespace STBEverywheres_Back_ApiAuth.Services
         private readonly IUserRepository _userRepository;
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthService> _logger;
-
+        private readonly IMemoryCache _memoryCache;
         public AuthService(
-            IUserRepository userRepository,
+            IUserRepository userRepository, IMemoryCache memoryCache,
             IConfiguration configuration,
             ILogger<AuthService> logger)
         {
             _userRepository = userRepository;
             _configuration = configuration;
             _logger = logger;
+            _memoryCache = memoryCache;
         }
 
         public async Task<AuthResult> Authenticate(string email, string password)
@@ -33,11 +35,23 @@ namespace STBEverywheres_Back_ApiAuth.Services
 
             var user = await _userRepository.GetUserWithClientByEmailAsync(email);
 
-            if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
-            {
+            if (user == null ||  string.IsNullOrEmpty(user.PasswordHash)|| !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+      {
                 _logger.LogWarning("Authentication failed for {Email}", email);
                 return null;
             }
+
+            var verificationToken = Guid.NewGuid().ToString();
+            _memoryCache.Set(verificationToken, new { /* données */ }, TimeSpan.FromHours(24));
+
+
+            // Dans Authenticate
+            var isPending = _memoryCache.TryGetValue($"pendingemail{email}", out _);
+            if (isPending)
+            {
+                throw new UnauthorizedAccessException("Email non vérifié");
+            }
+
 
             return new AuthResult
             {
@@ -45,9 +59,10 @@ namespace STBEverywheres_Back_ApiAuth.Services
                 RefreshToken = GenerateToken(user, isAccessToken: false),
                 Role = user.Role,
                 UserId = user.Id,
-               
+
             };
         }
+
 
         public async Task<AuthResult> RefreshToken(string refreshToken)
         {

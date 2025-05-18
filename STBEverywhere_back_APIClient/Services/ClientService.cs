@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using STBEverywhere_Back_SharedModels.Data;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
+using System.Text;
 
 namespace STBEverywhere_back_APIClient.Services
 {
@@ -19,20 +21,128 @@ namespace STBEverywhere_back_APIClient.Services
         private readonly HttpClient _httpClient;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ApplicationDbContext _context;
-
+        private readonly IMemoryCache _memoryCache;
         public ClientService(
             IUserRepository userRepository,
             IClientRepository clientRepository,
             HttpClient httpClient,
-            IHttpContextAccessor httpContextAccessor, ApplicationDbContext context)
+            IHttpContextAccessor httpContextAccessor, IMemoryCache memoryCache, ApplicationDbContext context)
         {
             _clientRepository = clientRepository;
             _httpClient = httpClient;
             _userRepository = userRepository;
             _httpContextAccessor = httpContextAccessor;
             _context = context;
+            _memoryCache = memoryCache;
         }
 
+        public async Task<string> RegisterAsync(RegisterDto registerDto)
+        {
+            // Vérifications existantes (RIB, email, etc.)
+            var compte = await GetCompteByRIBAsync(registerDto.RIB);
+            if (compte == null)
+                throw new InvalidOperationException("Le RIB est invalide ou n'existe pas.");
+
+            var client = await _clientRepository.GetClientByIdAsync(compte.ClientId);
+            if (client == null || client.Email != registerDto.Email)
+                throw new InvalidOperationException("Le RIB ne correspond pas à l'email fourni.");
+
+            // Vérifier si l'utilisateur existe déjà
+            var existingUser = await _userRepository.GetByEmailAsync(registerDto.Email);
+            if (existingUser != null)
+            {
+                return "Utilisateur déjà inscrit.";
+            }
+
+            // Stocker les infos temporairement dans le cache
+            var verificationToken = Guid.NewGuid().ToString();
+            _memoryCache.Set(verificationToken, new
+            {
+                Email = registerDto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
+                Role = UserRole.Client,
+                RIB = registerDto.RIB
+            }, TimeSpan.FromHours(24));
+
+            // Envoyer l'email avec le lien de vérification
+            var verificationUrl = $"http://localhost:4200/verify-email?token={Uri.EscapeDataString(verificationToken)}";
+
+            // Exemple de corps d'e-mail AVEC LIEN DIRECT (évite le tracking Google)
+            var emailBody = $@"
+<p>Cliquez sur ce lien :</p>
+<p>
+    <a href='{verificationUrl}' 
+       target='_blank' 
+       style='color: #0066cc; text-decoration: none;'>
+       Vérifier mon e-mail
+    </a>
+</p>
+
+";
+            var emailSubject = "Vérification de votre email";
+
+
+            // Envoi via l'API email existante
+            var emailRequest = new
+            {
+                to = registerDto.Email,
+                subject = emailSubject,
+                content = emailBody
+            };
+
+            using (var httpClient = new HttpClient())
+            {
+                var json = JsonSerializer.Serialize(emailRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await httpClient.PostAsync("http://localhost:5203/api/Email/send", content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    // _logger.LogError("Erreur lors de l'envoi de l'email de vérification : {Error}", errorContent);
+                    throw new Exception("Erreur lors de l'envoi de l'email de vérification.");
+                }
+            }
+            return "Un email de vérification a été envoyé. Veuillez vérifier votre boîte mail pour compléter l'inscription. Ce lien expirera dans 24 heures.";
+        }
+
+        public async Task<string> VerifyEmailAsync(string token)
+        {
+            if (!_memoryCache.TryGetValue(token, out dynamic verificationData))
+            {
+                throw new UnauthorizedAccessException("Lien de vérification invalide ou expiré.");
+            }
+
+            string email = verificationData.Email;
+            string passwordHash = verificationData.PasswordHash;
+            UserRole role = verificationData.Role;
+            string rib = verificationData.RIB;
+
+            // Créer l'utilisateur seulement maintenant
+            var newUser = new User
+            {
+                Email = email,
+                PasswordHash = passwordHash,
+                Role = role
+                // Pas besoin de IsVerified puisque nous ne modifions pas la base
+            };
+            await _userRepository.AddAsync(newUser);
+
+            // Lier l'utilisateur au client
+            var client = await _clientRepository.GetClientByEmailAsync(email);
+            if (client != null)
+            {
+                client.UserId = newUser.Id;
+                await _clientRepository.UpdateClientAsync(client);
+            }
+
+            // Supprimer le token du cache
+            _memoryCache.Remove(token);
+
+            return "Email vérifié avec succès. Votre inscription est maintenant complète.";
+        }
+      
 
         public async Task<Convention?> GetConventionByIdAsync(int id)
         {
@@ -70,40 +180,7 @@ namespace STBEverywhere_back_APIClient.Services
         }
 
      
-        public async Task<string> RegisterAsync(RegisterDto registerDto)
-        {
-            // 1. Vérifier si le RIB est valide et appartient à l'email donné
-            var compte = await GetCompteByRIBAsync(registerDto.RIB);
-            if (compte == null)
-                throw new InvalidOperationException("Le RIB est invalide ou n'existe pas.");
-
-            var client = await _clientRepository.GetClientByIdAsync(compte.ClientId);
-            if (client == null || client.Email != registerDto.Email)
-                throw new InvalidOperationException("Le RIB ne correspond pas à l'email fourni.");
-
-            // 2. Vérifier si l'utilisateur existe déjà dans la table User
-            var existingUser = await _userRepository.GetByEmailAsync(registerDto.Email);
-            if (existingUser != null)
-            {
-                return "Utilisateur déjà inscrit.";
-            }
-
-            // 3. Créer un nouvel utilisateur et crypter son mot de passe
-            var newUser = new User
-            {
-                Email = registerDto.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
-                Role = UserRole.Client
-            };
-
-            await _userRepository.AddAsync(newUser);
-
-            // 4. Lier l'utilisateur au client dans la table Client
-            client.UserId = newUser.Id;
-            await _clientRepository.UpdateClientAsync(client);
-
-            return "Inscription réussie.";
-        }
+       
 
         // Méthode pour récupérer le compte par RIB via API externe
         private async Task<Compte?> GetCompteByRIBAsync(string rib)

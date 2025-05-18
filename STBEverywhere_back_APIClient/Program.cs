@@ -35,7 +35,7 @@ builder.Services.AddScoped<IClientService, ClientService>();
 
 
 builder.Services.AddScoped<EmailService>();
-
+builder.Services.AddMemoryCache();
 
 
 // Configuration directe du client HTTP

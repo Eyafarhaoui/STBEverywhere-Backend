@@ -33,6 +33,7 @@ using System.Text.Json;
 using RestSharp;
 using STBEverywhere_back_APIClient.Repositories;
 using System.Numerics;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace STBEverywhere_back_APIClient.Controllers
 {
@@ -50,6 +51,7 @@ namespace STBEverywhere_back_APIClient.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly INotificationService _notificationService;
         private readonly IClientRepository _clientRepository;
+        
         public ClientController(
             IClientService clientService,
             IUserRepository userRepository,
@@ -58,7 +60,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             ApplicationDbContext context,
             ILogger<ClientController> logger,
             EmailService emailService,
-            INotificationService notificationService, IClientRepository clientRepository)
+            INotificationService notificationService,  IClientRepository clientRepository)
         {
             _clientService = clientService;
             _context = context;
@@ -69,6 +71,7 @@ namespace STBEverywhere_back_APIClient.Controllers
             _environment = environment;
             _notificationService = notificationService;
             _clientRepository = clientRepository;
+           
         }
 
 
@@ -1975,7 +1978,6 @@ Société Tunisienne de Banque</p>
                 return StatusCode(500, "Erreur interne du serveur");
             }
         }
-
         [HttpPost("submit-modification-request")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -1993,7 +1995,13 @@ Société Tunisienne de Banque</p>
                 {
                     return NotFound(new { message = "Client non trouvé" });
                 }
+                var pendingRequest = await _context.ModificationRequests
+           .AnyAsync(r => r.ClientId == client.Id && r.Status == "EnCours");
 
+                if (pendingRequest)
+                {
+                    return BadRequest(new { message = "Vous avez déjà une demande en cours. Vous ne pouvez pas soumettre une nouvelle demande tant que la précédente n'est pas traitée." });
+                }
                 // 2. Validation des champs
                 var validFields = new[] { "adresse", "profession", "situationProfessionnelle", "etatCivil", "residence" };
                 if (!validFields.Contains(requestDto.FieldToModify.ToLower()))
@@ -2071,6 +2079,8 @@ Société Tunisienne de Banque</p>
                 return StatusCode(500, new { message = "Erreur interne du serveur" });
             }
         }
+
+
         [HttpGet("pending-modification-requests")]
 
         public async Task<IActionResult> GetPendingModificationRequests()
