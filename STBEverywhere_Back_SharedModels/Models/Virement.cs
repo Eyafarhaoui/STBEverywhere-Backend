@@ -34,10 +34,10 @@ namespace  STBEverywhere_Back_SharedModels
         public string TypeVirement { get; set; }   // "Unitaire/Masse"
 
         // Champ spécifique aux virements de masse
-        public string? FichierBeneficaires { get; set; } // Nullable
-
-
+        public string? FichierBeneficaires { get; set; }
         public string? OtpCode { get; set; }
+        public int? StatutOtpCode { get; set; }
+
 
 
     }

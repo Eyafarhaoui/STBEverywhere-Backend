@@ -54,8 +54,8 @@
 
                             string emailSubject;
                             string emailContent;
-                            string salutation = compte.Client.Genre == "Féminin" ? "Madame" : "Monsieur";
-                            string nomComplet = $"{compte.Client.Prenom} {compte.Client.Nom}";
+                            string salutation = compte?.Client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+                            string nomComplet = $"{compte?.Client?.Prenom} {compte?.Client?.Nom}";
 
                             if (demande.StatutDemande == StatutDemandeEnum.Accepte)
                             {
@@ -84,7 +84,7 @@
                             <p>Pour toute information complémentaire ou pour discuter des alternatives possibles, nous vous invitons à prendre contact avec votre conseiller bancaire.</p>
                             <p>Nous vous remercions de votre confiance et restons à votre disposition pour tout accompagnement supplémentaire.</p>
                             <p>Cordialement,<br>
-                            Le Service Engagements<br>
+                            Le Service  Client<br>
                             Société Tunisienne de Banque<br>
                             <small>Ceci est un message automatique, merci de ne pas y répondre</small></p>";
                             }

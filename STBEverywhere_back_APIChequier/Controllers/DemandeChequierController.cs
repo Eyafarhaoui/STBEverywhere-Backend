@@ -20,6 +20,7 @@ using Org.BouncyCastle.Asn1.Cmp;
 using Org.BouncyCastle.Asn1.Crmf;
 using ZstdSharp.Unsafe;
 using RestSharp;
+using FluentAssertions.Common;
 namespace STBEverywhere_back_APIChequier.Controllers
 {
     [Route("api/DemandeChequierApi")]
@@ -399,14 +400,35 @@ namespace STBEverywhere_back_APIChequier.Controllers
             {
                 return StatusCode((int)response.StatusCode, new { error = "Erreur lors de l'envoi de l'email." });
             }*/
-
-            // Appel HTTP à l'API EmailController
+           // string salutation = compte?.Client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+            //string nomComplet = $"{compte?.Client?.Prenom} {compte?.Client?.Nom}";
+            
             var emailRequest = new
             {
                 to = demande.Email,
-                subject = "Demande de chéquier  barré reçue",
-                content = "<h5>Votre demande a bien été enregistrée et est en cours de traitement.</h5>"
+                subject = "Demande de chéquier barré reçue",
+                content = $@"
+        <p><strong>Bonjour,</strong></p>
+
+        <p>Nous vous confirmons la réception de votre demande de <strong>chéquier barré</strong>.</p>
+
+        <p>Votre demande a été <strong>enregistrée avec succès</strong> et est actuellement en cours de traitement par nos services.</p>
+
+        <p>Vous recevrez des notifications par e-mail vous permettant de suivre l’évolution de votre demande.<br>
+        Vous avez également la possibilité de consulter son état à tout moment via la rubrique <strong>« Suivi des demandes de chéquier »</strong> sur notre plateforme en ligne.</p>
+
+        <p>Nous vous remercions pour votre confiance.</p>
+
+        <p>Cordialement,<br>
+        <strong>Le Service Client</strong><br>
+        Société Tunisienne de Banque</p>
+
+        <p style='font-size: small; color: gray;'>
+        <i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+        </p>"
             };
+
+
 
             var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
 
@@ -568,12 +590,48 @@ namespace STBEverywhere_back_APIChequier.Controllers
                 await _fraisRepository.AddAsync(frais);
             }
             await _fraisRepository.SaveAsync();
-            var emailRequest = new
+           /* var emailRequest = new
             {
                 to = demande.Email,
                 subject = "Demande de chéquier non barré reçue",
                 content = "<h5>Votre demande a bien été enregistrée et est en cours de traitement.</h5>"
+            };*/
+
+
+
+
+
+            /*string salutation = compte?.Client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+            string nomComplet = $"{compte?.Client?.Prenom} {compte?.Client?.Nom}";*/
+
+            var emailRequest = new
+            {
+                to = demande.Email,
+                subject = "Demande de chéquier non barré reçue",
+                content = $@"
+        <p><strong>Bonjour,</strong></p>
+
+        <p>Nous vous confirmons la réception de votre demande de <strong>chéquier non barré</strong>.</p>
+
+        <p>Votre demande a été <strong>enregistrée avec succès</strong> et est actuellement en cours de traitement par nos services.</p>
+
+        <p>Vous recevrez des notifications par e-mail vous permettant de suivre l’évolution de votre demande.<br>
+        Vous avez également la possibilité de consulter son état à tout moment via la rubrique <strong>« Suivi des demandes de chéquier »</strong> sur notre plateforme en ligne.</p>
+
+        <p>Nous vous remercions pour votre confiance.</p>
+
+        <p>Cordialement,<br>
+        <strong>Le Service Client</strong><br>
+        Société Tunisienne de Banque</p>
+
+        <p style='font-size: small; color: gray;'>
+        <i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+        </p>"
             };
+
+
+
+
 
             var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);
 

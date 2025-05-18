@@ -18,6 +18,7 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.JsonPatch.Operations;
 using System.Globalization;
 using RestSharp;
+using System.Web;
 
 namespace STBEverywhere_back_APICarte.Controllers
 {
@@ -755,7 +756,7 @@ namespace STBEverywhere_back_APICarte.Controllers
                 await _dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-
+             
 
                 // SMS pour Emetteur
                 var smsRequestEmetteur = new
@@ -768,7 +769,8 @@ namespace STBEverywhere_back_APICarte.Controllers
                 var smsRequestRecepteur = new
                 {
                     mobile = carteRecepteur.Compte.Client.Telephone,
-                    message = $"Le solde de votre compte {carteRecepteur.Compte.RIB} au {DateVirement} est {carteRecepteur.Compte.Solde} TND. Dernière opération: Recharge Carte:&#43{dto.Montant} TND"
+                    message = $"Le solde de votre compte {carteRecepteur.Compte.RIB} au {DateVirement} est {carteRecepteur.Compte.Solde} TND. Dernière opération: Recharge Carte:%2B{dto.Montant} TND"
+
 
                 };
 

@@ -1,6 +1,7 @@
 ﻿using Microsoft.IdentityModel.Tokens;
 using STBEverywhere_ApiAuth.Repositories;
 using STBEverywhere_back_APIClient.Services;
+using STBEverywhere_Back_SharedModels;
 using STBEverywhere_Back_SharedModels.Models;
 using STBEverywhere_Back_SharedModels.Models.DTO;
 using System.IdentityModel.Tokens.Jwt;
@@ -150,16 +151,58 @@ namespace STBEverywheres_Back_ApiAuth.Services
                 {
                     throw new InvalidOperationException("No user found with this email.");
                 }
-
+                string salutation = "";
+                string destinataire = "";
+                if (user.Role == UserRole.Client)
+                {
+                    var client = await _userRepository.GetClientByUserIdAsync(user.Id);
+                    salutation = client?.Genre == "Féminin" ? "Madame" : "Monsieur";
+                    destinataire = $"{salutation} {client?.Nom} {client?.Prenom}";
+                }
+                else if (user.Role == UserRole.Agent)
+                {
+                    var agent = await _userRepository.GetAgentByUserIdAsync(user.Id);
+                    destinataire = $"Bonjour {agent.Nom}";
+                }
                 var resetToken = Guid.NewGuid().ToString(); // Générer un token unique
                 user.ResetPasswordToken = resetToken;
                 user.ResetPasswordTokenExpiry = DateTime.UtcNow.AddHours(1); // Expiration après 1h
                 await _userRepository.UpdateAsync(user);
-
+               
                 // Créer le lien de réinitialisation
                 var resetPasswordUrl = $"http://localhost:4200/reset-password?token={resetToken}";
                 var emailSubject = "Demande de réinitialisation du mot de passe";
-                var emailBody = $"<p>Bonjour,</p><p>Nous avons reçu une demande de réinitialisation de votre mot de passe. Veuillez cliquer sur le lien ci-dessous pour réinitialiser votre mot de passe :</p><p><a href='{resetPasswordUrl}'>Réinitialiser le mot de passe</a></p><p>Ce lien expirera dans 1 heure.</p>";
+               // var emailBody = $"<p><strong>{destinataire},</strong></p>\r\n<p>Nous avons reçu une demande de réinitialisation de votre mot de passe. Veuillez cliquer sur le lien ci-dessous pour réinitialiser votre mot de passe :</p><p><a href='{resetPasswordUrl}'>Réinitialiser le mot de passe</a></p><p>Ce lien expirera dans 1 heure.</p>";
+
+
+
+
+
+
+
+                var emailBody = $@"
+<p><strong>{destinataire},</strong></p>
+
+
+<p>Un nouveau mot de passe a été demandé pour votre compte Cisco</p>
+
+<p>Si vous n’êtes pas à l’origine de cette opération, nous vous invitons à contacter immédiatement notre service client ou votre conseiller dédié.</p>
+<p>Cliquez sur le lien pour terminer la procédure.</p> <p><a href='{resetPasswordUrl}'>Réinitialiser le mot de passe</a></p><p>Ce lien expirera dans 1 heure.</p>
+<p>Nous vous rappelons que vos identifiants sont strictement personnels et confidentiels. Ne les communiquez en aucun cas, même à un représentant de la banque.</p>
+
+<p>Merci pour votre confiance.</p>
+
+<p>Cordialement,<br>
+<strong>Le Service Client</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
+
+
+
+
 
                 // Appel HTTP POST vers le controller Email
                 var emailRequest = new

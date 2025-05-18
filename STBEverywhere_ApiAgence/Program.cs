@@ -22,7 +22,17 @@ var client = new MongoClient(settings);
 
 // Enhanced connection test
 try
+
 {
+
+
+
+
+
+
+
+
+
     Console.WriteLine("Attempting MongoDB connection...");
     var db = client.GetDatabase("STBAgences");
     await db.RunCommandAsync((Command<BsonDocument>)"{ping:1}");

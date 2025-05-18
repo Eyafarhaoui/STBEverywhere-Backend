@@ -4,9 +4,11 @@ using Newtonsoft.Json;
 using STBEverywhere_back_APIChequier.Controllers;
 using STBEverywhere_back_APIChequier.Hubs;
 using STBEverywhere_back_APIChequier.Repository.IRepositoy;
+using STBEverywhere_Back_SharedModels;
 using STBEverywhere_Back_SharedModels.Data;
 using STBEverywhere_Back_SharedModels.Models;
 using System.Net.Http;
+using System.Numerics;
 using System.Text;
 
 namespace STBEverywhere_back_APIChequier.Services
@@ -47,16 +49,26 @@ namespace STBEverywhere_back_APIChequier.Services
                 if (existingEmailLog == null) // Pas encore envoyé
                 {
                     var sujet = "Acheminement de votre chéquier – Confirmation d’expédition";
-                    var contenu = @"Madame, Monsieur,
+                   
+                    //string salutation = chequier?.Compte?.Client?.Genre == "Féminin" ? "Madame" : "Monsieur";
 
-Nous avons le plaisir de vous informer que votre chéquier a été envoyé par courrier recommandé. Celui-ci est actuellement en cours d’expédition à l’adresse postale communiquée lors de la saisie de votre demande.
+                    //string nomComplet = $"{chequier?.Compte?.Client?.Prenom} {chequier?.Compte?.Client?.Nom}";
+                    var contenu = $@"
+ <p><strong>Bonjour,</strong></p>
 
-Nous vous invitons à vous assurer de la disponibilité de cette adresse pour la bonne réception de votre chéquier. En cas de non-réception dans un délai raisonnable, nous vous prions de bien vouloir contacter votre agence.
 
-Nous vous remercions pour la confiance que vous accordez à notre établissement.
+<p>Nous avons le plaisir de vous informer que votre <strong>chéquier</strong> a été expédié par courrier recommandé. Celui-ci est actuellement en cours d’acheminement à l’adresse postale que vous avez renseignée lors de votre demande.</p>
 
-Cordialement,
-STB – Département de la Gestion des Moyens de Paiement";
+<p>Nous vous invitons à vérifier la disponibilité de cette adresse afin d'assurer une bonne réception du courrier. En cas de non-réception dans un délai raisonnable, nous vous prions de bien vouloir prendre contact avec votre agence.</p>
+
+<p>Nous vous remercions pour la confiance que vous accordez à notre établissement.</p>
+
+<p>Cordialement,<br>
+<strong>STB – Département de la Gestion des Moyens de Paiement</strong></p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
 
                     // Appel HTTP vers EmailController
                     var emailRequest = new
@@ -109,6 +121,7 @@ STB – Département de la Gestion des Moyens de Paiement";
                         Status = ChequierStatus.Actif,
                         DateLivraison = DateTime.Now,
                     };
+                   
 
                     _context.Chequiers.Add(chequier);
                     await _context.SaveChangesAsync();
@@ -121,20 +134,35 @@ STB – Département de la Gestion des Moyens de Paiement";
 
                     if (existingEmailLog == null)
                     {
-                        var contenu = @"Nous vous informons que votre demande de chéquier a été traitée avec succès 
-et que votre chéquier est désormais disponible dans l'agence. 
-Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture de l'agence.
+                        //string salutation = chequier?.DemandeChequier?.Compte?.Client?.Genre == "Féminin" ? "Madame" : "Monsieur";
 
-Si vous avez des questions, n'hésitez pas à nous contacter.
-Cordialement,
-STB";
+                        //string nomComplet = $"{chequier?.DemandeChequier?.Compte?.Client?.Prenom} {chequier?.DemandeChequier?.Compte?.Client?.Nom}";
+                        //Console.WriteLine("nom complet oiur chequier dispo agen", nomComplet);
+                        var contenu = @"
+ <p><strong>Bonjour,</strong></p>
+
+
+<p>Nous vous informons que votre <strong>demande de chéquier</strong> a été <strong>traitée avec succès</strong>.</p>
+
+<p>Votre chéquier est désormais disponible dans votre agence. Vous pouvez venir le retirer à tout moment pendant les horaires d'ouverture habituels.</p>
+
+<p>Si vous avez la moindre question, n’hésitez pas à contacter votre conseiller ou notre service client.</p>
+
+<p>Cordialement,<br>
+<strong>Le Service Client</strong><br>
+Société Tunisienne de Banque</p>
+
+<p style='font-size: small; color: gray;'>
+<i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+</p>";
+
 
                         // Appel HTTP vers EmailController
                         var emailRequest = new
                         {
                             to = demande.Email,
                             subject = "Votre chéquier est disponible en Agence",
-                            content = $"<p>{contenu.Replace("\n", "<br>")}</p>"
+                            content = contenu
                         };
 
                         var emailResponse = await _httpClient.PostAsJsonAsync("http://localhost:5203/api/Email/send", emailRequest);

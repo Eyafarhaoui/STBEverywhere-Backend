@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using MongoDB.Driver;
 using SharpCompress.Common;
 using STBEverywhere_Back_SharedModels.Models;
 using STBEverywhere_Back_SharedModels.Models.enums;
@@ -467,13 +468,13 @@ namespace STBEverywhere_Back_SharedModels.Data
                     {
                         id_convention = 1,
                         nom_convention = "CNSS",
-                        marge_bancaire = 1.5m  
+                        marge_bancaire = 1.5m
                     },
                     new Convention
                     {
                         id_convention = 2,
                         nom_convention = "CNRPS",
-                        marge_bancaire = 2.0m  
+                        marge_bancaire = 2.0m
                     },
 
                      new Convention
@@ -481,7 +482,38 @@ namespace STBEverywhere_Back_SharedModels.Data
                          id_convention = 3,
                          nom_convention = "CNAM",
                          marge_bancaire = 3.0m
-                     }
+                     },
+                     new Convention
+                     {
+                         id_convention = 4,
+                         nom_convention = "MUTUELLE STEG",
+                         marge_bancaire = 3.5m
+                     },
+                      new Convention
+                      {
+                          id_convention = 5,
+                          nom_convention = "SYNDICAT TUNISIEN MEDECINS DENTISTE DE LIBRE PRATIQUES",
+                          marge_bancaire = 4.0m
+                      },
+
+                       new Convention
+                       {
+                           id_convention = 6,
+                           nom_convention = "OFFICE NATIONAL DES POSTES TUNISIENNES",
+                           marge_bancaire = 3.5m
+                       },
+                         new Convention
+                         {
+                             id_convention = 7,
+                             nom_convention = "AMICALE MINISTERE ENSEIGNEMENT SUPERIEUR ET RECHERCHE SCIENTIFI",
+                             marge_bancaire = 6.0m
+                         },
+                           new Convention
+                           {
+                               id_convention = 8,
+                               nom_convention = "MUTUELLE STEG",
+                               marge_bancaire = 1.0m
+                           }
                 );
             });
                 // Configuration de l'entité Virement
