@@ -76,7 +76,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<EmailService>();
-
+builder.Services.AddMemoryCache();
 // CORS
 builder.Services.AddCors(options =>
 {
