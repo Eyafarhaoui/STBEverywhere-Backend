@@ -51,7 +51,13 @@ namespace STBEverywheres_Back_ApiAuth.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 _logger.LogWarning("Échec de la connexion pour l'email : {Email}. Raison : {Message}", loginDto.Email, ex.Message);
-                return Unauthorized(new { Message = ex.Message });
+
+                // Modifier ici pour retourner directement le remainingSeconds au bon niveau
+                return Unauthorized(new
+                {
+                    message = ex.Message,
+                    remainingSeconds = ex.InnerException != null && int.TryParse(ex.InnerException.Message, out int sec) ? sec : (int?)null
+                });
             }
             catch (Exception ex)
             {

@@ -50,6 +50,9 @@ namespace STBEverywhere_back_APICarte.Controllers
             _carteRepository = carteRepository;
         }
 
+
+
+
         [HttpGet("generate/{numCarte}")]
        
         public async Task<IActionResult> GenerateCvv(string numCarte)
@@ -420,10 +423,19 @@ namespace STBEverywhere_back_APICarte.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError, "Une erreur interne est survenue.");
             }
         }
+        /*private string _fakeUserId;
 
-
+        public void SetFakeUserId(string userId)
+        {
+            _fakeUserId = userId;
+        }
+        */
         private int GetUserIdFromToken()
         {
+            /*if (!string.IsNullOrEmpty(_fakeUserId))
+            {
+                return int.Parse(_fakeUserId);
+            }*/
             try
             {
                 var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
@@ -691,7 +703,8 @@ namespace STBEverywhere_back_APICarte.Controllers
                     .FirstOrDefaultAsync(c => c.NumCarte == dto.CarteRecepteurNum);
 
                 if (carteEmetteur == null || carteRecepteur == null)
-                    return NotFound("Une des cartes est introuvable");
+                    return BadRequest(new { message = "Une des cartes est introuvable" });
+
 
                 if (carteEmetteur.Compte.ClientId != clientEmetteur.Id)
                     return Unauthorized("Vous n'êtes pas autorisé à utiliser cette carte");
@@ -702,7 +715,7 @@ namespace STBEverywhere_back_APICarte.Controllers
                     DateTimeStyles.None,
                     out var clientExpirationDate))
                 {
-                    return BadRequest("Format de date invalide (MM/yy attendu)");
+                    return BadRequest(new { message="Format de date invalide (MM/yy attendu)" });
                 }
 
                 // Convertir en DateTime complète (dernier jour du mois)
@@ -715,7 +728,7 @@ namespace STBEverywhere_back_APICarte.Controllers
                 if (carteEmetteur.DateExpiration.ToString("MM/yy") != dto.DateExpiration)
                 {
                     _logger.LogWarning($"Date expiration invalide. Reçue: {dto.DateExpiration}, Attendue: {carteEmetteur.DateExpiration:MM/yy}");
-                    return BadRequest("Date d'expiration incorrecte");
+                    return BadRequest(new { message = "Date d'expiration incorrecte" });
                 }
 
                 // 3. Validation du CVV
@@ -734,7 +747,7 @@ namespace STBEverywhere_back_APICarte.Controllers
                 if ((carteEmetteur.Compte.Solde + carteEmetteur.Compte.DecouvertAutorise) < dto.Montant)
                 {
                     _logger.LogWarning($"Solde insuffisant pour la carte {carteEmetteur.NumCarte}");
-                    return BadRequest("Solde insuffisant pour effectuer la recharge");
+                    return BadRequest(new { message = "Solde insuffisant pour effectuer la recharge" });
                 }
 
                 // 5. Création de la recharge
@@ -755,8 +768,9 @@ namespace STBEverywhere_back_APICarte.Controllers
                 
                 await _dbContext.SaveChangesAsync();
                 await transaction.CommitAsync();
-
-             
+                /*
+                var carteemetteur= _carteRepository.GetCarteByNumCarteAsync(dto.CarteEmetteurNum);
+                var typeemetteur= carteemetteur.*/
 
                 // SMS pour Emetteur
                 var smsRequestEmetteur = new

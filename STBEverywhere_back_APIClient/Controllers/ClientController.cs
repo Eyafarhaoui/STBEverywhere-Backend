@@ -226,6 +226,40 @@ namespace STBEverywhere_back_APIClient.Controllers
                 return BadRequest(new { Message = ex.Message });
             }
         }
+        // DTO pour recevoir le token dans le body
+        public class VerifyEmailRequest
+        {
+            public string Token { get; set; }
+        }
+
+        [HttpPost("verify-email")]
+        public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.Token))
+            {
+                return BadRequest(new { Message = "Token de vérification manquant" });
+            }
+
+            try
+            {
+                _logger.LogInformation("Tentative de vérification d'email avec token: {Token}", request.Token);
+
+                var result = await _clientService.VerifyEmailAsync(request.Token);
+
+                _logger.LogInformation("Email vérifié avec succès");
+                return Ok(new { Message = result });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning("Échec de vérification d'email: {Message}", ex.Message);
+                return Unauthorized(new { Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur lors de la vérification d'email");
+                return StatusCode(500, new { Message = "Une erreur interne est survenue" });
+            }
+        }
 
         [HttpGet("GetClientRevenuMensuel")]
         public async Task<IActionResult> GetClientRevenuMensuel(int userId)
@@ -236,17 +270,26 @@ namespace STBEverywhere_back_APIClient.Controllers
 
         }
 
+        [NonAction]
+        public async Task<IActionResult> GetClientInfoFromId(int userId)
+        {
+            var client = await _userRepository.GetClientByUserIdAsync(userId);
 
-        // Récupérer les informations du client
+            if (client == null)
+                return NotFound(new { message = "Client introuvable" });
+
+            return Ok(client);
+        }
+
+
+
         [HttpGet("me")]
         public async Task<IActionResult> GetClientInfo()
         {
             try
             {
                 var userId = GetUserIdFromToken();
-                var client = await _userRepository.GetClientByUserIdAsync(userId);
-
-                return Ok(client);
+                return await GetClientInfoFromId(userId);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -260,6 +303,30 @@ namespace STBEverywhere_back_APIClient.Controllers
             }
         }
 
+
+        /* // Récupérer les informations du client
+         [HttpGet("me")]
+         public async Task<IActionResult> GetClientInfo()
+         {
+             try
+             {
+                 var userId = GetUserIdFromToken();
+                 var client = await _userRepository.GetClientByUserIdAsync(userId);
+
+                 return Ok(client);
+             }
+             catch (UnauthorizedAccessException ex)
+             {
+                 _logger.LogError(ex, "Erreur d'authentification");
+                 return Unauthorized(new { message = ex.Message });
+             }
+             catch (Exception ex)
+             {
+                 _logger.LogError(ex, "Erreur serveur");
+                 return StatusCode(500, new { message = "Erreur interne" });
+             }
+         }
+        */
 
         // Télécharger le fichier KYC
 
@@ -1053,7 +1120,6 @@ Société Tunisienne de Banque</p>
             }
         }
 
-
         [HttpPost("upload-documents")]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadStudentDocuments([FromForm] StudentPackDto documentsDto)
@@ -1069,30 +1135,30 @@ Société Tunisienne de Banque</p>
                 {
                     return NotFound("Client not found");
                 }
+
+                // Vérification Pack Elyssa existant
                 var existingElyssaRequest = await _context.PackElyssa
-            .FirstOrDefaultAsync(p => p.ClientId == clientId && p.Status == "Acceptee");
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId &&
+                        (p.Status == "Acceptee" || p.Status == "EnAttente"));
 
                 if (existingElyssaRequest != null)
                 {
                     return BadRequest("Vous êtes déjà inscrit au Pack Elyssa, vous ne pouvez pas vous inscrire au Pack Student.");
                 }
 
+                // Vérification Pack Student existant
+                var existingStudentRequest = await _context.PackStudents
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId &&
+                        (p.Status == "Acceptee" || p.Status == "EnAttente"));
 
-                var existingRequest = await _context.PackStudents
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "EnAttente"));
-
-                if (existingRequest != null)
+                if (existingStudentRequest != null)
                 {
-                    return BadRequest("Vous avez déjà une demande en cours.");
-                }
-                var existinngRequest = await _context.PackStudents
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee"));
-
-                if (existinngRequest != null)
-                {
-                    return BadRequest("Vous étes deja inscrit au pack.");
+                    return BadRequest(existingStudentRequest.Status == "Acceptee"
+                        ? "Vous êtes déjà inscrit au Pack Student."
+                        : "Vous avez déjà une demande en cours.");
                 }
 
+                // Suite du code pour le traitement des documents...
                 var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"client_{clientId}");
                 if (!Directory.Exists(clientUploadsPath))
                 {
@@ -1155,29 +1221,31 @@ Société Tunisienne de Banque</p>
                     return NotFound("Client not found");
                 }
 
-
+                // Vérification Pack Student existant
                 var existingStudentRequest = await _context.PackStudents
-        .FirstOrDefaultAsync(p => p.ClientId == clientId && p.Status == "Acceptee");
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId &&
+                        (p.Status == "Acceptee" || p.Status == "EnAttente"));
 
                 if (existingStudentRequest != null)
                 {
-                    return BadRequest("Vous êtes déjà inscrit au Pack Student, vous ne pouvez pas vous inscrire au Pack Elyssa.");
+                    return BadRequest(existingStudentRequest.Status == "Acceptee"
+                        ? "Vous êtes déjà inscrit au Pack Student, vous ne pouvez pas vous inscrire au Pack Elyssa."
+                        : "Vous avez déjà une demande Pack Student en cours. Vous ne pouvez pas vous inscrire au Pack Elyssa.");
                 }
-                var existingRequest = await _context.PackElyssa
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "EnAttente"));
 
-                if (existingRequest != null)
+                // Vérification Pack Elyssa existant
+                var existingElyssaRequest = await _context.PackElyssa
+                    .FirstOrDefaultAsync(p => p.ClientId == clientId &&
+                        (p.Status == "Acceptee" || p.Status == "EnAttente"));
+
+                if (existingElyssaRequest != null)
                 {
-                    return BadRequest("Vous avez déjà une demande en cours.");
-                }
-                var existinngRequest = await _context.PackElyssa
-                    .FirstOrDefaultAsync(p => p.ClientId == clientId && (p.Status == "Acceptee"));
-
-                if (existinngRequest != null)
-                {
-                    return BadRequest("Vous étes deja inscrit au pack.");
+                    return BadRequest(existingElyssaRequest.Status == "Acceptee"
+                        ? "Vous êtes déjà inscrit au Pack Elyssa."
+                        : "Vous avez déjà une demande en cours. Vous ne pouvez pas vous inscrire au Pack Student");
                 }
 
+                // Suite du code pour le traitement des documents...
                 var clientUploadsPath = Path.Combine(_environment.WebRootPath, "uploads", $"Pack_Elyssa_client_{clientId}");
                 if (!Directory.Exists(clientUploadsPath))
                 {
@@ -1224,7 +1292,6 @@ Société Tunisienne de Banque</p>
                 return StatusCode(500, $"Erreur lors de l'envoi des documents: {ex.Message}");
             }
         }
-
 
 
 
@@ -1996,11 +2063,20 @@ Société Tunisienne de Banque</p>
                     return NotFound(new { message = "Client non trouvé" });
                 }
                 var pendingRequest = await _context.ModificationRequests
-           .AnyAsync(r => r.ClientId == client.Id && r.Status == "EnCours");
+     .AnyAsync(r => r.ClientId == client.Id
+                 && r.Status == "EnCours"
+                 && r.FieldToModify.ToLower() == requestDto.FieldToModify.ToLower());
+
 
                 if (pendingRequest)
                 {
-                    return BadRequest(new { message = "Vous avez déjà une demande en cours. Vous ne pouvez pas soumettre une nouvelle demande tant que la précédente n'est pas traitée." });
+                    return BadRequest(new
+                    {
+                        message = $"Vous avez déjà une demande de modification en cours pour votre {requestDto.FieldToModify}. Veuillez patienter jusqu’à son traitement avant d’en soumettre une nouvelle."
+                    });
+
+                    //return BadRequest(new { message = $"Vous avez déjà une demande en cours pour le champ '{requestDto.FieldToModify}'. Veuillez attendre son traitement avant d’en soumettre une autre pour ce même champ." });
+
                 }
                 // 2. Validation des champs
                 var validFields = new[] { "adresse", "profession", "situationProfessionnelle", "etatCivil", "residence" };

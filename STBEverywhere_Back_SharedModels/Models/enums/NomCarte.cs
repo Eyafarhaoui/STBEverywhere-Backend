@@ -2,6 +2,7 @@
 {
     public enum NomCarte
     {
+        Test,
         VisaClassic,
         Mastercard,
         Tecno,

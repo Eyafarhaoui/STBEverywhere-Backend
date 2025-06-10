@@ -64,9 +64,9 @@ namespace STBEverywhere_Back_SharedModels.Data
 
                 // Données initiales
                 entity.HasData(
-                    new User { Id = 1, Email = "guesmiimahmoud@gmail.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"), Role = UserRole.Client },
-                    new User { Id = 2, Email = "jane.smith@example.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password456"), Role = UserRole.Client },
-                    new User { Id = 4, Email = "robert.smith@example.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password789"), Role = UserRole.Client },
+                    new User { Id = 1, Email = "farhaouieya@gmail.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"), Role = UserRole.Client },
+                    new User { Id = 2, Email = "ikramguesmi75@gmail.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password456"), Role = UserRole.Client },
+                    new User { Id = 4, Email = "mouradfarhaoui1967@gmail.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("password789"), Role = UserRole.Client },
 
                     new User { Id = 3, Email = "agent@stb.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("agent123"), Role = UserRole.Agent },
                     new User { Id = 5, Email = "agent5@stb.com", PasswordHash = BCrypt.Net.BCrypt.HashPassword("agent456"), Role = UserRole.Agent }
@@ -109,25 +109,49 @@ namespace STBEverywhere_Back_SharedModels.Data
 
             modelBuilder.Entity<ModificationRequest>(entity =>
             {
-                // Relation avec Client
-                entity.HasOne(m => m.Client)
-                      .WithMany() // Si Client n'a pas de collection de ModificationRequests
-                      .HasForeignKey(m => m.ClientId)
-                      .OnDelete(DeleteBehavior.Restrict); // Ou DeleteBehavior.Cascade selon vos besoins
+                entity.HasKey(m => m.Id);
 
-                // Configuration des propriétés
+                entity.Property(m => m.ClientId)
+                    .IsRequired();
+
+                entity.Property(m => m.FieldToModify)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(m => m.NewValue)
+                    .IsRequired()
+                    .HasMaxLength(255);
+
+                entity.Property(m => m.JustificationPath)
+                    .IsRequired()
+                    .HasMaxLength(255);
+
+                entity.Property(m => m.RequestDate)
+                    .IsRequired()
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
                 entity.Property(m => m.Status)
-                      .HasMaxLength(20)
-                      .HasDefaultValue("Pending");
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasDefaultValue("Pending");
 
-            
+                entity.Property(m => m.ProcessedByAgentId)
+                    .IsRequired(false);
 
-                // Si vous voulez ajouter des index pour améliorer les performances
+                entity.Property(m => m.ProcessedDate)
+                    .IsRequired(false);
+
+                // Relation with Client
+                entity.HasOne(m => m.Client)
+                    .WithMany() // If Client doesn't have a collection of ModificationRequests
+                    .HasForeignKey(m => m.ClientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Add indexes for performance
                 entity.HasIndex(m => m.Status);
                 entity.HasIndex(m => m.ClientId);
                 entity.HasIndex(m => m.RequestDate);
             });
-
             modelBuilder.Entity<NotificationReclamation>(entity =>
             {
                 entity.HasKey(n => n.Id);
@@ -191,7 +215,7 @@ namespace STBEverywhere_Back_SharedModels.Data
                         new Agent { Id = 1, Nom = "Admin", Prenom = "STB", Departement = "Administration", UserId = 3, AgenceId = "6801861dfe110f2e59031111" }
                     );
                 entity.HasData(
-                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5 ,AgenceId = "680a27afe482daa6835e9f6d" }
+                       new Agent { Id = 2, Nom = "Admin5", Prenom = "STB5", Departement = "Administration", UserId = 5, AgenceId = "6801861dfe110f2e59031112" }
                    );
             });
 
@@ -222,23 +246,117 @@ namespace STBEverywhere_Back_SharedModels.Data
 
                 // Données initiales
                 entity.HasData(
+                  new Client
+                  {
+                      Id = 1,
+                      Nom = "Guesmi",
+                      Prenom = "Mahmoud",
+                      DateNaissance = new DateTime(1980, 1, 1),
+                      Telephone = "94626064",
+                      Email = "farhaouieya@gmail.com", // Vous modifierez cette valeur
+                      Adresse = "123 Rue Tunis",
+                      Civilite = "M",
+                      Nationalite = "TN",
+                      EtatCivil = "Marié(e)",
+                      Residence = "Tunis",
+                      NumCIN = "14668061",
+                      DateDelivranceCIN = new DateTime(2010, 1, 1),
+                      DateExpirationCIN = new DateTime(2030, 1, 1),
+                      LieuDelivranceCIN = "Tunis",
+                      PhotoClient = "image1.jpg",
+                      Genre = "Masculin",
+                      Profession = "Ingénieur",
+                      SituationProfessionnelle = "Employé",
+                      NiveauEducation = "Master",
+                      NombreEnfants = 2,
+                      RevenuMensuel = 5000.00m,
+                      PaysNaissance = "Tunisie",
+                      NomMere = "Mère Mahmoud",
+                      NomPere = "Père Mahmoud",
+                      AgenceId = "6801861dfe110f2e59031111",
+                      id_convention = 1,
+                      UserId = 1
+                  },
+                   new Client
+                   {
+                       Id = 2, // Nouvel ID
+                       Nom = "Guesmi",
+                       Prenom = "Ikram",
+                       DateNaissance = new DateTime(1990, 5, 15),
+                       Telephone = "987654321",
+                       Email = "ikramguesmi75@gmail.com", // Vous modifierez cette valeur
+                       Adresse = "456 Avenue Habib Bourguiba",
+                       Civilite = "Mme",
+                       Nationalite = "TN",
+                       EtatCivil = "Célibataire",
+                       Residence = "Sfax",
+                       NumCIN = "14668063",
+                       DateDelivranceCIN = new DateTime(2015, 5, 15),
+                       DateExpirationCIN = new DateTime(2035, 5, 15),
+                       LieuDelivranceCIN = "Sfax",
+                       PhotoClient = "image3.jpg",
+                       Genre = "Féminin",
+                       Profession = "Médecin",
+                       SituationProfessionnelle = "Indépendant",
+                       NiveauEducation = "Doctorat",
+                       NombreEnfants = 0,
+                       RevenuMensuel = 7000.00m,
+                       PaysNaissance = "Tunisie",
+                       NomMere = "Mère Ikram",
+                       NomPere = "Père Ikram",
+                       AgenceId = "6801861dfe110f2e59031111",
+                       id_convention = 2,
+                       UserId = 2
+                   },
                     new Client
                     {
-                        Id = 1,
-                        Nom = "Doe",
-                        Prenom = "John",
+                        Id = 3, // Nouvel ID
+                        Nom = "Jemai",
+                        Prenom = "Hayet",
+                        DateNaissance = new DateTime(1985, 8, 20),
+                        Telephone = "987654322",
+                        Email = "guesmii.ikram@gmail.com", // Vous modifierez cette valeur
+                        Adresse = "789 Rue de la Liberté",
+                        Civilite = "Mme",
+                        Nationalite = "TN",
+                        EtatCivil = "Marié(e)",
+                        Residence = "Sousse",
+                        NumCIN = "14668065",
+                        DateDelivranceCIN = new DateTime(2016, 8, 20),
+                        DateExpirationCIN = new DateTime(2036, 8, 20),
+                        LieuDelivranceCIN = "Sousse",
+                        PhotoClient = "image2.jpg",
+                        Genre = "Féminin",
+                        Profession = "Avocate",
+                        SituationProfessionnelle = "Profession libérale",
+                        NiveauEducation = "Master",
+                        NombreEnfants = 3,
+                        RevenuMensuel = 6000.00m,
+                        PaysNaissance = "Tunisie",
+                        NomMere = "Mère Hayet",
+                        NomPere = "Père Hayet",
+                        AgenceId = "6801861dfe110f2e59031112",
+                        id_convention = 3,
+
+                    },
+
+                    new Client
+                    {
+                        Id = 4,
+                        Nom = "Farhaoui",
+                        Prenom = "Eya",
                         DateNaissance = new DateTime(1980, 1, 1),
-                        Telephone = "123456789",
-                        Email = "guesmiimahmoud@gmail.com",
-                        Adresse = "123 Main St",
+                        Telephone = "55292557",
+                        Email = "mouradfarhaoui1967@gmail.com",
+                        Adresse = "123 Rue Tunis",
                         Civilite = "M",
-                        Nationalite = "US",
-                        EtatCivil = "Célibataire",
-                        Residence = "New York",
+                        Nationalite = "TN",
+                        EtatCivil = "Marié(e)",
+                        Residence = "Tunis",
                         NumCIN = "14668061",
                         DateDelivranceCIN = new DateTime(2010, 1, 1),
                         DateExpirationCIN = new DateTime(2030, 1, 1),
-                        LieuDelivranceCIN = "New York",
+                        LieuDelivranceCIN = "Tunis",
                         PhotoClient = "mahmoud.jpg",
                         Genre = "Masculin",
                         Profession = "Ingénieur",
@@ -246,72 +364,11 @@ namespace STBEverywhere_Back_SharedModels.Data
                         NiveauEducation = "Master",
                         NombreEnfants = 2,
                         RevenuMensuel = 5000.00m,
-                        PaysNaissance = "USA",
-                        NomMere = "Jane Doe",
-                        NomPere = "John Doe Sr.", 
-                        AgenceId= "6801861dfe110f2e59031111", 
-                        id_convention=1,
-                        UserId = 1
-                    },
-                    new Client
-                    {
-                        Id = 2,
-                        Nom = "Smith",
-                        Prenom = "Jane",
-                        DateNaissance = new DateTime(1990, 5, 15),
-                        Telephone = "987654321",
-                        Email = "jane.smith@example.com",
-                        Adresse = "456 Elm St",
-                        Civilite = "Mme",
-                        Nationalite = "CA",
-                        EtatCivil = "Marié(e)",
-                        Residence = "Toronto",
-                        NumCIN = "14668062",
-                        DateDelivranceCIN = new DateTime(2015, 5, 15),
-                        DateExpirationCIN = new DateTime(2035, 5, 15),
-                        LieuDelivranceCIN = "Toronto",
-                        PhotoClient = "mahmoud.jpg",
-                        Genre = "Féminin",
-                        Profession = "Médecin",
-                        SituationProfessionnelle = "Indépendant",
-                        NiveauEducation = "Doctorat",
-                        NombreEnfants = 1,
-                        RevenuMensuel = 7000.00m,
-                        PaysNaissance = "Canada",
-                        NomMere = "Mary Smith",
-                        NomPere = "Robert Smith",
+                        PaysNaissance = "Tunisie",
+                        NomMere = "Mère Mahmoud",
+                        NomPere = "Père Mahmoud",
                         AgenceId = "6801861dfe110f2e59031111",
-                        id_convention=2,
-                        UserId = 2
-                    },
-                    new Client
-                    {
-                        Id = 4,
-                        Nom = "robert",
-                        Prenom = "smith",
-                        DateNaissance = new DateTime(2000, 5, 15),
-                        Telephone = "997654321",
-                        Email = "robert.smith@example.com",
-                        Adresse = "456 ben arous",
-                        Civilite = "Mme",
-                        Nationalite = "TN",
-                        EtatCivil = "Marié(e)",
-                        Residence = "Tunis",
-                        NumCIN = "19668067",
-                        DateDelivranceCIN = new DateTime(2013, 5, 15),
-                        DateExpirationCIN = new DateTime(2035, 5, 15),
-                        LieuDelivranceCIN = "Toronto",
-                        PhotoClient = "mahmoud.jpg",
-                        Genre = "Masculin",
-                        Profession = "Médecin",
-                        SituationProfessionnelle = "Indépendant",
-                        NiveauEducation = "Doctorat",
-                        NombreEnfants = 1,
-                        RevenuMensuel = 2000.00m,
-                        PaysNaissance = "Canada",
-                        NomMere = "Mary Smith",
-                        NomPere = "Robert Smith",
-                        AgenceId = "680a27afe482daa6835e9f6d",
+                        id_convention = 1,
                         UserId = 4
                     }
                 );
@@ -336,18 +393,30 @@ namespace STBEverywhere_Back_SharedModels.Data
                         DateCreation = new DateTime(2024, 5, 1),
                         Statut = "Actif",
                         IBAN = "TN7410000001121041347",
-                        DecouvertAutorise=0,
+                        DecouvertAutorise = 0,
                         ClientId = 1
                     },
+                     new Compte
+                     {
+                         RIB = "10002960033351809624",
+                         NumCin = "14668061",
+                         Type = "eparge",
+                         Solde = 5000.00m,
+                         DateCreation = new DateTime(2025, 6, 1),
+
+                         Statut = "Actif",
+                         IBAN = "TN4710002960033351824",
+                         ClientId = 4
+                     },
                     new Compte
                     {
-                        RIB = "65432110223463790345",
+                        RIB = "10002840658225593444",
                         NumCin = "14668062",
-                        Type = "Epargne",
+                        Type = "Courant",
                         Solde = 5000.00m,
                         DateCreation = new DateTime(2025, 1, 1),
                         Statut = "Actif",
-                        IBAN = "TN7410000001121041347",
+                        IBAN = "TN2010002840658225544",
                         ClientId = 2
                     }
                 );
@@ -370,37 +439,35 @@ namespace STBEverywhere_Back_SharedModels.Data
                 entity.HasData(
                     new Carte
                     {
-                        NumCarte = "1111222233334444",
+                        NumCarte = "4314052233334444",
                         NomCarte = NomCarte.VisaClassic,
                         TypeCarte = TypeCarte.International,
                         DateCreation = new DateTime(2024, 1, 1),
                         DateExpiration = new DateTime(2027, 1, 1),
                         Statut = StatutCarte.Active,
                         Iddemande = 1,
-                       
                         Nature = "postpayee",
-                        PlafondTPE = 40000,
-                        PlafondDAP = 20000,
-                    
+                        PlafondTPE = 4000,
+                        PlafondDAP = 2000,
                         CodePIN = "",
                         RIB = "10000001121041340847"
                     },
                     new Carte
                     {
-                        NumCarte = "5555666677778888",
+                        NumCarte = "5189326677778888",
                         NomCarte = NomCarte.Mastercard,
                         TypeCarte = TypeCarte.National,
                         DateCreation = new DateTime(2024, 1, 1),
                         DateExpiration = new DateTime(2027, 1, 1),
                         Statut = StatutCarte.Active,
                         Iddemande = 2,
-                       
-                 
+
+
                         Nature = "postpayee",
                         CodePIN = "",
-                        PlafondTPE = 40000,
-                        PlafondDAP = 20000,
-                        RIB = "65432110223463790345"
+                        PlafondTPE = 4000,
+                        PlafondDAP = 2000,
+                        RIB = "10002840658225593444"
                     }
                 );
             });
@@ -418,37 +485,37 @@ namespace STBEverywhere_Back_SharedModels.Data
                 entity.Property(d => d.NumTel).IsRequired().HasMaxLength(20);
 
                 entity.HasData(
-                    new DemandeCarte
-                    {
-                        Iddemande = 1,
-                        NumCompte = "10000001121041340847",
-                        NomCarte = NomCarte.VisaClassic,
-                        TypeCarte = TypeCarte.International,
-                        CIN = "14668061",
-                        Email = "john.doe@example.com",
-                        NumTel = "12345678",
-                        Statut = StatutDemande.DisponibleEnAgence,
-                        EmailEnvoye = false,
-                        EmailEnvoyeLivree = false,
-                        CarteAjouter = false,
-                      
-                    },
-                    new DemandeCarte
-                    {
-                        Iddemande = 2,
-                        NumCompte = "65432110223463790345",
-                        NomCarte = NomCarte.Mastercard,
-                        TypeCarte = TypeCarte.National,
-                        CIN = "14668062",
-                        Email = "jane.smith@example.com",
-                        NumTel = "87654321",
-                        Statut = StatutDemande.EnPreparation,
-                        EmailEnvoye = false,
-                        EmailEnvoyeLivree = false,
-                        CarteAjouter = false,
-                      
-                    }
-                );
+                                    new DemandeCarte
+                                    {
+                                        Iddemande = 1,
+                                        NumCompte = "10000001121041340847",
+                                        NomCarte = NomCarte.VisaClassic,
+                                        TypeCarte = TypeCarte.International,
+                                        CIN = "14668061",
+                                        Email = "guesmiimahmoud@gmail.com",
+                                        NumTel = "12345678",
+                                        Statut = StatutDemande.DisponibleEnAgence,
+                                        EmailEnvoye = false,
+                                        EmailEnvoyeLivree = false,
+                                        CarteAjouter = true,
+
+                                    },
+                                    new DemandeCarte
+                                    {
+                                        Iddemande = 2,
+                                        NumCompte = "10002840658225593444",
+                                        NomCarte = NomCarte.Mastercard,
+                                        TypeCarte = TypeCarte.National,
+                                        CIN = "14668062",
+                                        Email = "ikramguesmi75@gmail.com",
+                                        NumTel = "87654321",
+                                        Statut = StatutDemande.EnPreparation,
+                                        EmailEnvoye = false,
+                                        EmailEnvoyeLivree = false,
+                                        CarteAjouter = true,
+
+                                    }
+                                );
             });
             modelBuilder.Entity<Convention>(entity =>
             {
@@ -516,8 +583,8 @@ namespace STBEverywhere_Back_SharedModels.Data
                            }
                 );
             });
-                // Configuration de l'entité Virement
-                modelBuilder.Entity<Virement>(entity =>
+            // Configuration de l'entité Virement
+            modelBuilder.Entity<Virement>(entity =>
             {
                 entity.HasKey(v => v.Id);
                 entity.HasIndex(v => new { v.RIB_Emetteur, v.DateVirement }).IsUnique();
@@ -538,17 +605,17 @@ namespace STBEverywhere_Back_SharedModels.Data
        .HasConversion<string>();
 
             // le convertisseur de la liste des idvirement de l'entité FraisCompte
-modelBuilder.Entity<FraisCompte>()
-        .Property(e => e.IdsVirementsStr)
-        .HasDefaultValue(""); // Valeur par défaut vide
+            modelBuilder.Entity<FraisCompte>()
+                    .Property(e => e.IdsVirementsStr)
+                    .HasDefaultValue(""); // Valeur par défaut vide
 
             // pour stocker l'enum de statut demande en texte pas 0 1 
             modelBuilder.Entity<DemandeModificationDecouvert>()
        .Property(d => d.StatutDemande)
-       .HasConversion<string>(); 
+       .HasConversion<string>();
 
         }
 
-       
+
     }
 }

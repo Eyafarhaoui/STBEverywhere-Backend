@@ -158,7 +158,7 @@ namespace STBEverywhere_back_APICompte.Services
 
             Random random = new Random();
             string randomDigits = random.Next(10, 99).ToString(); // Génère deux chiffres aléatoires
-
+            // Prend 10 caractères à partir de la position 3 Prend 2 caractères à partir de la position 18
             string iban = $"TN{randomDigits}10{rib.Substring(2, 3)}{rib.Substring(5, 10)}{rib.Substring(18, 2)}";
 
             return iban;
@@ -209,6 +209,7 @@ namespace STBEverywhere_back_APICompte.Services
 
                 rib = ribBuilder.ToString();
             }
+            // Si le RIB existe déjà on recommence le do pour generer nv RIB sinon on sort de la boucle
             while (await _compteRepository.ExistsByRibAsync(rib));
 
             return rib;
@@ -232,6 +233,7 @@ namespace STBEverywhere_back_APICompte.Services
                 }
 
                 var agence = await response.Content.ReadFromJsonAsync<AgenceDto>();
+                //si codeagence nul on retourne null sinon on retourne codeagence 
                 return agence?.CodeAgence; 
             }
             catch (Exception ex)
@@ -376,18 +378,23 @@ namespace STBEverywhere_back_APICompte.Services
                                         });
                                     }
 
-                                    // IBAN formaté
+                                    // formater iban pour affciher espacs apres 4 caracteres apres le code pays et les 2 chiffres aleatoire 
                                     if (!string.IsNullOrEmpty(iban))
                                     {
+                                        //ssupprimer espace
                                         var cleanedIban = iban.Replace(" ", "");
                                         var formattedIban = string.Empty;
 
                                         if (cleanedIban.Length >= 2)
                                         {
+                                            //extraire code pays
+                                            
                                             formattedIban = cleanedIban.Substring(0, 2);
                                             if (cleanedIban.Length > 2)
                                             {
+                                                // code pays+espace+ 2 chiffres aleatoire 
                                                 formattedIban += " " + cleanedIban.Substring(2, 2);
+                                                // a partir du 5eme caractere on fait espace chaque 4 caracter
                                                 for (int i = 4; i < cleanedIban.Length; i += 4)
                                                 {
                                                     int length = Math.Min(4, cleanedIban.Length - i);
@@ -446,6 +453,7 @@ namespace STBEverywhere_back_APICompte.Services
             var fraisComptes = await _db.FraisComptes
                 .Where(f => f.RIB == rib && f.Date >= dateDebut && f.Date <= dateFin)
                 .ToListAsync();
+            var idsFraisDéjàAjoutés = new HashSet<int>(); // pour éviter les doublons
 
             var listeOperationsAvecFrais = new List<dynamic>();
             foreach (var v in virements.OrderBy(v => v.DateVirement))
@@ -459,8 +467,11 @@ namespace STBEverywhere_back_APICompte.Services
                 });
 
                 var fraisAssocies = fraisComptes
-                    .Where(f => f.IdsVirementsStr != null && f.IdsVirementsStr.Contains(v.Id.ToString()))
-                    .OrderBy(f => f.Date);
+    .Where(f => f.IdsVirementsStr != null &&
+                f.IdsVirementsStr.Split(',').Contains(v.Id.ToString()) &&
+                f.RIB == rib &&
+                !idsFraisDéjàAjoutés.Contains(f.Id)) // éviter doublon
+    .OrderBy(f => f.Date);
 
                 foreach (var f in fraisAssocies)
                 {
@@ -471,7 +482,10 @@ namespace STBEverywhere_back_APICompte.Services
                         Debit = f.Montant.ToString("F3"),
                         Credit = ""
                     });
+
+                    idsFraisDéjàAjoutés.Add(f.Id); // marquer comme ajouté
                 }
+
             }
 
             var idsVirementsUtilisés = virements.Select(v => v.Id.ToString()).ToHashSet();
@@ -525,12 +539,12 @@ namespace STBEverywhere_back_APICompte.Services
             var totalDebit = listeOperationsAvecFrais.Sum(l => decimal.TryParse((string)l.Debit, out var d) ? d : 0);
             var totalCredit = listeOperationsAvecFrais.Sum(l => decimal.TryParse((string)l.Credit, out var c) ? c : 0);
 
-            var soldeFinal = await _db.HistoriquesSoldes
-                .Where(h => h.RIB == rib && h.date_jour.Date == dateFin.Date)
-                .Select(h => h.Solde)
-                .FirstOrDefaultAsync();
-
-            listeOperationsAvecFrais.Add(new
+            /* var soldeFinal = await _db.HistoriquesSoldes
+                 .Where(h => h.RIB == rib && h.date_jour.Date == dateFin.Date)
+                 .Select(h => h.Solde)
+                 .FirstOrDefaultAsync();*/
+            var soldeFinal = (soldeInitial + totalCredit) - totalDebit;
+             listeOperationsAvecFrais.Add(new
             {
                 Date = "",
                 Libelle = "Total des opérations",

@@ -170,7 +170,8 @@ namespace STBEverywhere_back_APICompte.Controllers
             try
             {
                 // Récupération du revenu mensuel
-                using var httpClient = new HttpClient();
+               using var httpClient = new HttpClient();
+               
 
                 // Construction de l'URL avec le paramètre userId
                 var apiUrl = $"http://localhost:5260/api/Client/GetClientRevenuMensuel?userId={clientId}";
@@ -337,6 +338,30 @@ namespace STBEverywhere_back_APICompte.Controllers
                 throw new UnauthorizedAccessException("Erreur de traitement du token", ex);
             }
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     }

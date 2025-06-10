@@ -67,11 +67,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             // _virementService = virementService;
 
         }
-        /*protected virtual int GetTestUserId()
-        {
-            return 1; // Valeur fixe pour les tests
-        }*/
-
+    
 
 
 
@@ -82,6 +78,9 @@ namespace STBEverywhere_back_APICompte.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Virement([FromBody] VirementUnitaireDto virementDto)
         {
+            decimal COMMISSION = 1.500m;
+            decimal TVA = 0.285m;
+            decimal montantTotal = 0.0m;
             _logger.LogInformation("Requête reçue pour un virement. Données : {@virementDto}", virementDto);
 
             var userId = GetUserIdFromToken();
@@ -118,6 +117,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
                 recepteur = (await _dbCompte.GetAllAsync(c => c.RIB == beneficiaire.RIBCompte)).FirstOrDefault();
 
+
                 // OTP requis uniquement pour virement vers autre bénéficiaire
                 if (string.IsNullOrEmpty(virementDto.OtpCode))
                 {
@@ -128,7 +128,8 @@ namespace STBEverywhere_back_APICompte.Controllers
                         RIB_Recepteur = recepteur?.RIB,
                         Montant = virementDto.Montant,
                         DateVirement = DateTime.Now,
-                        Statut = "En attente OTP",
+                        StatutVirement= "En attente OTP",
+                        StatutOtpCode = 0,
                         Motif = virementDto.motif,
                         TypeVirement = virementDto.TypeVirement,
                         Description = virementDto.Description,
@@ -145,11 +146,17 @@ namespace STBEverywhere_back_APICompte.Controllers
                 if (virementExistant == null)
                     return NotFound(new { message = "Virement non trouvé." });
 
-                if (virementExistant.Statut != "En attente OTP")
+                if (virementExistant.StatutVirement != "En attente OTP")
                     return BadRequest(new { message = "Virement déjà traité." });
+                if (virementExistant.StatutOtpCode == 1)
+                    return BadRequest(new { message = "OTP déjà utilisé." });
 
                 if (!_OtpService.ValidateOtp(virementExistant.OtpCode, virementDto.OtpCode))
                     return BadRequest(new { message = "Code OTP invalide." });
+
+                montantTotal = virementDto.Montant + TVA + COMMISSION;
+                if ((emetteur.Solde + emetteur.DecouvertAutorise) < montantTotal)
+                    return BadRequest(new { message = "Solde insuffisant." });
             }
             else if (virementDto.TypeVirement == "VirementUnitaireVersMescomptes")
             {
@@ -168,12 +175,12 @@ namespace STBEverywhere_back_APICompte.Controllers
             if (recepteur == null)
                 return NotFound(new { message = "Compte récepteur introuvable." });
 
-            decimal COMMISSION = 1.500m;
+            /*decimal COMMISSION = 1.500m;
             decimal TVA = 0.285m;
             decimal montantTotal = virementDto.Montant +
-                (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
-
-            if (emetteur.SoldeDisponible < montantTotal)
+                (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);*/
+             montantTotal = virementDto.Montant;
+            if ((emetteur.Solde+ emetteur.DecouvertAutorise) < montantTotal)
                 return BadRequest(new { message = "Solde insuffisant." });
 
             if (emetteur.Type == "epargne" && emetteur.Solde - montantTotal < 10.000m)
@@ -182,7 +189,8 @@ namespace STBEverywhere_back_APICompte.Controllers
             await _dbVirement.BeginTransactionAsync();
             try
             {
-                emetteur.Solde -= montantTotal;
+                //emetteur.Solde -= montantTotal;
+                emetteur.Solde -= virementDto.Montant +(virementDto.TypeVirement == "VirementUnitaireVersAutreBenef" ? (TVA + COMMISSION) : 0);
                 if (emetteur.Solde < 0)
                     emetteur.DecouvertAutorise += emetteur.Solde;
 
@@ -191,13 +199,16 @@ namespace STBEverywhere_back_APICompte.Controllers
                 await _dbCompte.UpdateAsync(emetteur);
                 await _dbCompte.UpdateAsync(recepteur);
                 await _DecouvertTrackerService.TrackDecouvert(emetteur.RIB, emetteur.Solde);
+                await _DecouvertTrackerService.TrackDecouvert(recepteur.RIB, recepteur.Solde); // AJOUTER CECI
+
 
                 Virement virementFinal;
 
                 if (virementDto.TypeVirement == "VirementUnitaireVersAutreBenef")
                 {
                     virementFinal = await _dbVirement.GetByIdAsync(virementDto.Id);
-                    virementFinal.Statut = "Réussi";
+                    virementFinal.StatutVirement = "Réussi";
+                    virementFinal.StatutOtpCode = 1;
                     virementFinal.DateVirement = DateTime.Now;
                     await _dbVirement.UpdateAsync(virementFinal);
 
@@ -220,7 +231,8 @@ namespace STBEverywhere_back_APICompte.Controllers
                         RIB_Recepteur = recepteur.RIB,
                         Montant = virementDto.Montant,
                         DateVirement = DateTime.Now,
-                        Statut = "Réussi",
+                        StatutVirement = "Réussi",
+                        StatutOtpCode = 1,
                         Motif = virementDto.motif,
                         TypeVirement = virementDto.TypeVirement,
                         Description = virementDto.Description
@@ -252,7 +264,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             var smsRequestEmetteur = new
             {
                 mobile = client.Telephone,
-                message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{montantTotal} TND"
+                message = $"Le solde de votre compte {virementDto.RIB_Emetteur} au {dateVirement} est {soldeEmetteur} TND. Dernière opération: VIREMENT ÉMIS: -{virementDto.Montant} TND"
             };
 
             var smsRequestRecepteur = new
@@ -1021,10 +1033,11 @@ namespace STBEverywhere_back_APICompte.Controllers
                             Description = dto.Description,
                             DateVirement = DateTime.Now,
                             Montant = beneficiaire.Montant,
-                            Statut = "Réussi",
+                            StatutVirement = "Réussi",
+                            StatutOtpCode = 1,
                             TypeVirement = "VirementDeMasse",
                             FichierBeneficaires = null,
-                            OtpCode = dto.Otp 
+                            OtpCode = dto.Otp
                         };
 
                         await _dbVirement.CreateAsync(virement);
@@ -1060,7 +1073,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                     var soldeEmetteur = await _dbCompte.GetSoldeByRIBAsync(dto.RibEmetteur);
                     var dateVirement = DateTime.Now.ToString("dd/MM");
                     var telephoneEmetteur = client.Telephone;
-                    var montantTotal = frais + totalVirement+ 0.585m;
+                    var montantTotal = frais + totalVirement+ 0.885m;
 
                     var smsRequestConfirm = new
                     {
@@ -1621,7 +1634,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 _logger.LogWarning("Le montant total n'est pas dans un format valide : {Montant}", montantTotalString);
                 return BadRequest(new { message = "Le montant total n'est pas dans un format valide." });
             }
-
+           
             var emetteur = (await _dbCompte.GetAllAsync(c => c.RIB == ribEmetteur)).FirstOrDefault();
             if (emetteur == null)
             {
@@ -1781,7 +1794,8 @@ namespace STBEverywhere_back_APICompte.Controllers
                         RIB_Recepteur = ribBeneficiaire,
                         Montant = montant,
                         DateVirement = DateTime.Now,
-                        Statut = "Réussi",
+                        StatutVirement = "Réussi",
+                        StatutOtpCode=1,
                         TypeVirement = "VirementDeMasse",
                         FichierBeneficaires = fichier,
                         Description = $"Virement de masse depuis {ribEmetteur}",
@@ -1794,9 +1808,12 @@ namespace STBEverywhere_back_APICompte.Controllers
                     idsVirements.Add(virement.Id);
                     totalDébité += montant;
 
-
+                  
                 }
-
+                if (totalDébité != montantTotal)
+                {
+                    return BadRequest(new { message = $"Total débité {totalDébité} différent du Montant à débiter Mentionné {montantTotal}." });
+                }
                 var CommissionCompte = new FraisCompte
                 {
                     RIB = ribEmetteur,
@@ -1819,10 +1836,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 await _dbFraisCompte.CreateAsync(TVACompte);
 
 
-                if (totalDébité != montantTotal)
-                {
-                    return BadRequest(new { message = $"Total débité {totalDébité} différent du Montant à débiter Mentionné {montantTotal}." });
-                }
+                
 
                 await _dbVirement.CommitTransactionAsync();
 
@@ -1878,28 +1892,6 @@ namespace STBEverywhere_back_APICompte.Controllers
                 }
 
                 _logger.LogInformation("Tous les SMS ont été envoyés avec succès.");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
                 _logger.LogInformation("Virement en masse réussi. Total débité : {TotalDebite}, Frais : {Frais}", totalDébité, frais);
 
@@ -2994,12 +2986,12 @@ namespace STBEverywhere_back_APICompte.Controllers
 
                 if (filter == "all" || filter == "sent")
                 {
-                    virementsEnvoyes = await _dbVirement.GetAllAsync(v => v.RIB_Emetteur == rib && v.Statut == "Réussi");
+                    virementsEnvoyes = await _dbVirement.GetAllAsync(v => v.RIB_Emetteur == rib && v.StatutVirement == "Réussi");
                 }
 
                 if (filter == "all" || filter == "received")
                 {
-                    virementsRecus = await _dbVirement.GetAllAsync(v => v.RIB_Recepteur == rib && v.Statut == "Réussi");
+                    virementsRecus = await _dbVirement.GetAllAsync(v => v.RIB_Recepteur == rib && v.StatutVirement == "Réussi");
                 }
 
                 var historiqueVirements = new

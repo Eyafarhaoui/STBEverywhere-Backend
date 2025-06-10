@@ -51,7 +51,7 @@ namespace STBEverywhere_back_APIClient.Services
             var existingUser = await _userRepository.GetByEmailAsync(registerDto.Email);
             if (existingUser != null)
             {
-                return "Utilisateur déjà inscrit.";
+                throw new InvalidOperationException("Utilisateur déjà inscrit.");
             }
 
             // Stocker les infos temporairement dans le cache
@@ -67,19 +67,38 @@ namespace STBEverywhere_back_APIClient.Services
             // Envoyer l'email avec le lien de vérification
             var verificationUrl = $"http://localhost:4200/verify-email?token={Uri.EscapeDataString(verificationToken)}";
 
-            // Exemple de corps d'e-mail AVEC LIEN DIRECT (évite le tracking Google)
+
+            var salutation = client.Genre == "Féminin" ? "Madame" : "Monsieur";
+            var nomClient = $"{client.Prenom} {client.Nom}";
+
+          
+
+          
+            var emailSubject = "Validation Mail";
             var emailBody = $@"
-<p>Cliquez sur ce lien :</p>
+        <p><strong>{salutation} {nomClient},</strong></p>
+
+        <p>Vous êtes en train de vivre une expérience digitale unique en Tunisie, Bienvenue à STB Everywhere</p>
+
+        <p>Entrez en relation avec la STB à votre rythme en se connectant à votre ordinateur ou smartphone, cliquer sur «continuer ».
+...Ne vous inquiétez pas, les informations déjà renseignées demeurent sauvegardées
+</p>
 <p>
     <a href='{verificationUrl}' 
        target='_blank' 
        style='color: #0066cc; text-decoration: none;'>
-       Vérifier mon e-mail
+       continuer
     </a>
 </p>
 
-";
-            var emailSubject = "Vérification de votre email";
+        <p>L’équipe STB Everywhere vous remercie pour votre confiance.<br>
+       
+       
+        Société Tunisienne de Banque</p>
+
+        <p style='font-size: small; color: gray;'>
+        <i>Ce message a été généré automatiquement. Merci de ne pas y répondre.</i>
+        </p>";
 
 
             // Envoi via l'API email existante
