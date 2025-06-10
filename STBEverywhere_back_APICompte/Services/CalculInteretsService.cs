@@ -99,7 +99,7 @@ namespace STBEverywhere_back_APICompte.Services
                     RIB_Recepteur = compte.RIB,
                     Montant = montantVerse,
                     DateVirement = DateTime.Now,
-                    Statut = "Réussi",
+                    StatutVirement = "Réussi",
                     Motif = $"INT. EPARGNE {trimestre} {DateTime.Now.Year}",
                     TypeVirement = "virement intérêt ",
                     //Description = virementDto.Description

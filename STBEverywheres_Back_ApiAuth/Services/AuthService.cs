@@ -18,6 +18,8 @@ namespace STBEverywheres_Back_ApiAuth.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthService> _logger;
         private readonly IMemoryCache _memoryCache;
+        private const int MaxLoginAttempts = 3;
+        private const int LockoutDurationMinutes = 5;
         public AuthService(
             IUserRepository userRepository, IMemoryCache memoryCache,
             IConfiguration configuration,
@@ -33,25 +35,43 @@ namespace STBEverywheres_Back_ApiAuth.Services
         {
             _logger.LogInformation("Tentative d'authentification pour {Email}", email);
 
+            // Vérifie si le compte est bloqué
+            if (_memoryCache.TryGetValue($"lockout_{email}", out DateTime lockoutExpiry))
+            {
+                var remainingSeconds = (int)(lockoutExpiry - DateTime.UtcNow).TotalSeconds;
+                throw new UnauthorizedAccessException("Compte temporairement bloqué.", new Exception(remainingSeconds.ToString()));
+            }
+
             var user = await _userRepository.GetUserWithClientByEmailAsync(email);
 
-            if (user == null ||  string.IsNullOrEmpty(user.PasswordHash)|| !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
-      {
-                _logger.LogWarning("Authentication failed for {Email}", email);
+            if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+            {
+                var cacheKey = $"login_attempts_{email}";
+                _memoryCache.TryGetValue(cacheKey, out int attempts);
+                attempts++;
+                _memoryCache.Set(cacheKey, attempts, TimeSpan.FromMinutes(LockoutDurationMinutes));
+
+                if (attempts >= MaxLoginAttempts)
+                {
+                    var lockoutUntil = DateTime.UtcNow.AddMinutes(LockoutDurationMinutes);
+                    _memoryCache.Set($"lockout_{email}", lockoutUntil, TimeSpan.FromMinutes(LockoutDurationMinutes));
+
+                    _logger.LogWarning("Compte bloqué pour {Email} après {Attempts} tentatives.", email, attempts);
+
+                    var remainingSeconds = (int)(lockoutUntil - DateTime.UtcNow).TotalSeconds;
+                    throw new UnauthorizedAccessException("Trop de tentatives échouées. Compte temporairement bloqué.", new Exception(remainingSeconds.ToString()));
+                }
+
+                _logger.LogWarning("Échec de l'authentification pour {Email}. Tentative {Attempts}", email, attempts);
                 return null;
             }
 
-            var verificationToken = Guid.NewGuid().ToString();
-            _memoryCache.Set(verificationToken, new { /* données */ }, TimeSpan.FromHours(24));
+            _memoryCache.Remove($"login_attempts_{email}");
 
-
-            // Dans Authenticate
-            var isPending = _memoryCache.TryGetValue($"pendingemail{email}", out _);
-            if (isPending)
+            if (_memoryCache.TryGetValue($"pending_email_{email}", out _))
             {
                 throw new UnauthorizedAccessException("Email non vérifié");
             }
-
 
             return new AuthResult
             {
@@ -59,10 +79,8 @@ namespace STBEverywheres_Back_ApiAuth.Services
                 RefreshToken = GenerateToken(user, isAccessToken: false),
                 Role = user.Role,
                 UserId = user.Id,
-
             };
         }
-
 
         public async Task<AuthResult> RefreshToken(string refreshToken)
         {

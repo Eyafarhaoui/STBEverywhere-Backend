@@ -23,7 +23,7 @@ namespace STBEverywhere_back_APIClient.Services
                 var title = $"";
                 var message = $"";
 
-                if (packType == "Elyssa"|| packType == "Student         ")
+                if (packType == "Elyssa" || packType == "Student")
                 {
                     title = $"Mise à jour de votre  demande sur le pack {packType}";
                     message = $" votre demande sur le pack {packType} a été : {newStatus}";
@@ -119,4 +119,3 @@ namespace STBEverywhere_back_APIClient.Services
         }
     }
 }
-

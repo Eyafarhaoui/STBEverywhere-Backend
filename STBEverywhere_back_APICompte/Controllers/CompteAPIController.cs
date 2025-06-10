@@ -37,6 +37,7 @@ using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using System.Numerics;
 using STBEverywhere_back_APICompte.Services.IServices;
+using STBEverywhere_back_APICompte.Services;
 
 
 
@@ -76,17 +77,6 @@ namespace STBEverywhere_back_APICompte.Controllers
             _httpClient = httpClient;
 
         }
-
-
-
-
-
-
-       
-
-
-
-
 
 
 
@@ -262,14 +252,47 @@ namespace STBEverywhere_back_APICompte.Controllers
             {
                 return BadRequest(new { message = "Aucun client trouvé avec ce NumCin." });
             }
+
+            if (compteDto.type.ToLower() == "courant")
+            {
+
+                 var courantCount = (await _compteService.GetAllAsync(c => c.ClientId == clientId && c.Type.ToLower() == "courant")).Count;
+                if (courantCount >= 2)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Conformément à la politique d’ouverture de comptes sur la plateforme STBEverywhere, un maximum de deux comptes courants est autorisé en ligne. Vous détenez actuellement deux comptes. Pour toute ouverture supplémentaire, nous vous invitons à vous présenter en agence avec les justificatifs requis."
+                    });
+
+                }
+            }
+
+            if (compteDto.type.ToLower() == "cheque")
+            {
+
+                var courantCount = (await _compteService.GetAllAsync(c => c.ClientId == clientId && c.Type.ToLower() == "cheque")).Count;
+                if (courantCount >= 2)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Conformément à la politique d’ouverture de comptes sur la plateforme STBEverywhere, un maximum de deux comptes chèques est autorisé en ligne. Vous détenez actuellement deux comptes. Pour toute ouverture supplémentaire, nous vous invitons à vous présenter en agence avec les justificatifs requis."
+                    });
+
+                }
+            }
             if (compteDto.type.ToLower() == "epargne")
             {
                 //var epargneCount = (await _dbCompte.GetAllAsync(c => c.NumCin == compteDto.NumCin && c.Type.ToLower() == "epargne")).Count;
 
-                var epargneCount = (await _compteService.GetAllAsync(c => c.Type.ToLower() == "epargne")).Count;
+                var epargneCount = (await _compteService.GetAllAsync(c => c.ClientId == clientId && c.Type.ToLower() == "epargne")).Count;
                 if (epargneCount >= 3)
                 {
-                    return BadRequest(new { message = "Vous ne pouvez pas avoir plus de 3 comptes d'épargne." });
+                   
+                    return BadRequest(new
+                    {
+                        message = "Conformément à la politique d’ouverture de comptes sur la plateforme STBEverywhere, un maximum de trois comptes épargne est autorisé en ligne. Vous détenez actuellement deux comptes. Pour toute ouverture supplémentaire, nous vous invitons à vous présenter en agence avec les justificatifs requis."
+                    });
+
                 }
             }
             string generatedRIB = await _compteService.GenerateUniqueRIB(agenceid);
@@ -277,7 +300,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
-
+            // si il s'agit d'un compte epargne solde initial=10 sinon 0
             decimal initialSolde = compteDto.type.ToLower() == "epargne" ? 10 : 0;
             // Utilisation d'AutoMapper pour convertir compteDto en Compte
             var compte = _mapper.Map<Compte>(compteDto);
@@ -291,6 +314,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             compte.NumCin = client.NumCin;
             compte.NbrOperationsAutoriseesParJour = "illimité";
             compte.MontantMaxAutoriseParJour = "illimité";
+            // si il s'agit d'un compte epargne decouvert null sinon 0
             compte.DecouvertAutorise = compteDto.type.ToLower() == "epargne" ? null : 0; 
 
             compte.IBAN = iban;
@@ -298,11 +322,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
             await _compteService.CreateAsync(compte);
 
-            /* await _dbCompte.CreateAsync(compte);
-             await _dbCompte.SaveAsync();*/
-            //_context.Compte.Add(compte);
-            // await _context.SaveChangesAsync();
-
+           
             return CreatedAtAction(nameof(GetCompteByRIB), new { rib = compte.RIB }, compte);
         }
 
@@ -329,54 +349,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             return Ok(compte);
         }
 
-        /*[HttpPut("desactive/{rib}")]
-
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> desactiverCompte(string rib, string idAgent)
-        {
-
-
-
-            var compte = (await _compteService.GetAllAsync(c => c.RIB == rib)).FirstOrDefault(); // Correction appliquée
-
-            if (compte == null)
-            {
-                return NotFound(new { message = "Compte introuvable." });
-            }
-
-
-            compte.Statut = "desactive";
-
-            compte.idAgent = idAgent;
-
-
-            await _compteService.SaveAsync();
-            return Ok(new { message = "Le compte a été désactivé avec succès." });
-        }
-
-        [HttpPut("active/{rib}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> activerCompte(string rib, string idAgent)
-        {
-            var compte = (await _compteService.GetAllAsync(c => c.RIB == rib)).FirstOrDefault();
-
-            if (compte == null)
-            {
-                return NotFound(new { message = "Compte introuvable." });
-            }
-
-            compte.Statut = "actif";
-
-            compte.idAgent = idAgent;
-
-            await _compteService.SaveAsync();
-
-            return Ok(new { message = "Le compte a été activé avec succès." });
-        }*/
+      
         [HttpPut("Cloturer/{rib}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -434,7 +407,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 Console.WriteLine($"Erreur lors de la récupération des chèquiers (status code: {responseChequiers.StatusCode})");
             }
 
-            // Analyse des causes de refus
+            //verification des conditions de refus de cloture
             List<string> motifsRefus = new();
 
             if (compte.Solde != 0)
@@ -475,48 +448,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
-        private int GetUserIdFromToken()
-        {
-            try
-            {
-                var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
-                if (string.IsNullOrEmpty(authHeader))
-                {
-                    throw new UnauthorizedAccessException("Header Authorization manquant");
-                }
-
-                var tokenParts = authHeader.Split(' ');
-                if (tokenParts.Length != 2 || !tokenParts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new UnauthorizedAccessException("Format d'autorisation invalide");
-                }
-
-                var token = tokenParts[1].Trim();
-                var handler = new JwtSecurityTokenHandler();
-
-                if (!handler.CanReadToken(token))
-                {
-                    throw new UnauthorizedAccessException("Le token n'est pas un JWT valide");
-                }
-
-                var jwtToken = handler.ReadJwtToken(token);
-                var userIdClaim = jwtToken.Claims.FirstOrDefault(c =>
-                    c.Type == JwtRegisteredClaimNames.Sub ||
-                    c.Type == ClaimTypes.NameIdentifier);
-
-                if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
-                {
-                    throw new UnauthorizedAccessException("Claim d'identifiant utilisateur invalide");
-                }
-
-                return userId;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Erreur dans GetUserIdFromToken");
-                throw new UnauthorizedAccessException("Erreur de traitement du token", ex);
-            }
-        }
+        
 
         [HttpGet("GetSoldeByRIB/{rib}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -561,15 +493,14 @@ namespace STBEverywhere_back_APICompte.Controllers
                     RIB = generatedRIB,
                     IBAN = iban,
                     Type = "Technique",
-                    // Ajoutez ce champ à votre modèle Compte si nécessaire
                     Solde = 0,
                     DateCreation = DateTime.Now,
                     Statut = "Actif",
                     ClientId = client.Id,
-                    NumCin = "TECHNIQUE", // Valeur spéciale pour les comptes techniques
+                    NumCin = "TECHNIQUE", 
                     NbrOperationsAutoriseesParJour = "illimité",
-                    MontantMaxAutoriseParJour = "illimité", // Limite haute pour les comptes techniques
-                    DecouvertAutorise = null // Pas de découvert pour les comptes techniques
+                    MontantMaxAutoriseParJour = "illimité",
+                    DecouvertAutorise = null 
                 };
 
                 await _compteService.CreateAsync(compte);
@@ -611,7 +542,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                 }
 
                 var agence = JsonConvert.DeserializeObject<Agence>(content);
-
+                //construction du chemin du logo
                 string logoPath = Path.Combine(hostingEnvironment.WebRootPath, "images", "STBlogo.jpg");
 
                 TextStyle arabicTextStyle = TextStyle.Default
@@ -632,7 +563,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                         page.Header()
                             .Column(headerCol =>
                             {
-                                // Section Logo + Texte
+                                //Logo + Texte
                                 headerCol.Item().PaddingBottom(10).Row(row =>
                                 {
                                     row.ConstantItem(100).Column(logoCol =>
@@ -683,7 +614,7 @@ namespace STBEverywhere_back_APICompte.Controllers
 
                                 col.Item().Height(20);
 
-                                // Section centrée - Tableau RIB, IBAN et BIC
+                                // Tableau RIB, IBAN et BIC
                                 col.Item().AlignCenter().Column(centerCol =>
                                 {
                                     // Tableau RIB
@@ -724,7 +655,7 @@ namespace STBEverywhere_back_APICompte.Controllers
                                         });
                                     }
 
-                                    // IBAN formaté
+                                    // IBAN 
                                     if (!string.IsNullOrEmpty(iban))
                                     {
                                         var cleanedIban = iban.Replace(" ", "");
@@ -834,7 +765,7 @@ namespace STBEverywhere_back_APICompte.Controllers
             if (compte == null)
                 return NotFound("Compte introuvable.");
 
-            if (compte.SoldeDisponible < montant)
+            if (compte.Solde + compte.DecouvertAutorise < montant)
                 return BadRequest("Solde insuffisant.");
 
             compte.Solde -= montant;
@@ -863,11 +794,10 @@ namespace STBEverywhere_back_APICompte.Controllers
                     return NotFound(new { message = "Aucun compte trouvé pour ce rib" });
 
                 var compte = comptes.FirstOrDefault();
-                /*if (string.IsNullOrEmpty(compte?.RIB))
-                    return NotFound(new { message = "RIB non disponible pour ce compte" }); QuestPDF.Settings.License = LicenseType.Community;*/
+                
 
-                var debut = datedebut.Date; // 00:00:00 par défaut
-                var fin = dateFin.Date.AddDays(1).AddTicks(-1); // 23:59:59.9999999
+                var debut = datedebut.Date; 
+                var fin = dateFin.Date.AddDays(1).AddTicks(-1); 
                 var pdfBytes = await _compteService.GeneratePdfExtraitWithQuestPDF(rib, debut, fin, compte.Statut,compte.IBAN,compte.Solde, _webHostEnvironment);
                 return File(pdfBytes, "application/pdf", $"RIB_{client.Nom}.pdf");
 
@@ -880,8 +810,6 @@ namespace STBEverywhere_back_APICompte.Controllers
             }
         }
 
-        
-       
 
 
 
@@ -900,10 +828,51 @@ namespace STBEverywhere_back_APICompte.Controllers
 
 
 
+        private int GetUserIdFromToken()
+        {
+            try
+            {
+                //recupere l’en-tête HTTP Authorization qui contient Bearer <token>
+                var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+                if (string.IsNullOrEmpty(authHeader))
+                {
+                    throw new UnauthorizedAccessException("Header Authorization manquant");
+                }
 
+                var tokenParts = authHeader.Split(' ');
+                //vérifie si format de l’en-tête  Authorization est Bearer <token>
+                if (tokenParts.Length != 2 || !tokenParts[0].Equals("Bearer", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new UnauthorizedAccessException("Format d'autorisation invalide");
+                }
+                //extrait token
+                var token = tokenParts[1].Trim();
+                var handler = new JwtSecurityTokenHandler();
+                //verifie si token est jwt
+                if (!handler.CanReadToken(token))
+                {
+                    throw new UnauthorizedAccessException("Le token n'est pas un JWT valide");
+                }
+                //lecture de jwt pour pouvoir acceder a ces claims
+                var jwtToken = handler.ReadJwtToken(token);
+                var userIdClaim = jwtToken.Claims.FirstOrDefault(c =>
+                // id peut avoir comme claim le nom sub ou NameIdentifier
+                    c.Type == JwtRegisteredClaimNames.Sub ||
+                    c.Type == ClaimTypes.NameIdentifier);
 
+                if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+                {
+                    throw new UnauthorizedAccessException("Claim d'identifiant utilisateur invalide");
+                }
 
-
+                return userId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erreur dans GetUserIdFromToken");
+                throw new UnauthorizedAccessException("Erreur de traitement du token", ex);
+            }
+        }
 
 
 

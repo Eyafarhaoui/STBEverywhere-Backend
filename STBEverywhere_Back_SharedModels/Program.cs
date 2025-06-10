@@ -9,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
   options.UseMySql(
       builder.Configuration.GetConnectionString("DefaultConnection"),
-      ServerVersion.Parse("8.0.0-mysql") // Mets la version exacte de MySQL ici
+      ServerVersion.Parse("8.0.2-mysql") // Mets la version exacte de MySQL ici
   ));
 
 // Add services to the container.

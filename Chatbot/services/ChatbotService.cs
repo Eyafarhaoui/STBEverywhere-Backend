@@ -25,7 +25,8 @@ namespace Chatbot.Services
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly Dictionary<string, string> _languageDetectionKeywords;
         private readonly IMemoryCache _synonymCache;
-        private readonly string _togetherApiKey;
+        private readonly string _openAiApiKey;
+        private const string OpenAiModel = "gpt-3.5-turbo"; // ou "gpt-4" selon votre abonnement
 
         public ChatbotService(IIntentRepository repository,
                             ILogger<ChatbotService> logger,
@@ -37,7 +38,7 @@ namespace Chatbot.Services
             _logger = logger;
             _httpClient = httpClient;
             _synonymCache = memoryCache;
-            _togetherApiKey = configuration["TogetherAI:ApiKey"];
+            _openAiApiKey = configuration["ApiKey"]; // Configuration simplifiée
 
             _jsonOptions = new JsonSerializerOptions
             {
@@ -114,7 +115,7 @@ namespace Chatbot.Services
                     rawResponse = FormatResponse(bestMatch.Intent.Responses);
                 }
 
-                return await GenerateResponseWithTogetherAI(rawResponse, userMessage, language);
+                return await GenerateResponseWithOpenAI(rawResponse, userMessage, language);
             }
             catch (Exception ex)
             {
@@ -257,23 +258,23 @@ namespace Chatbot.Services
             return jaro + prefixLength * 0.1 * (1 - jaro);
         }
 
-        private async Task<string> GenerateResponseWithTogetherAI(string rawResponse, string userMessage, string language)
+        private async Task<string> GenerateResponseWithOpenAI(string rawResponse, string userMessage, string language)
         {
-            if (string.IsNullOrWhiteSpace(_togetherApiKey))
+            if (string.IsNullOrWhiteSpace(_openAiApiKey))
             {
-                _logger.LogWarning("Clé API Together.ai non configurée");
+                _logger.LogWarning("Clé API OpenAI non configurée");
                 return rawResponse ?? GetFallbackMessage(language);
             }
 
             try
             {
                 var systemPrompt = rawResponse != null
-                    ? $"Tu es un assistant bancaire expert de la STB. Reformule cette réponse technique en {language} pour qu'elle soit claire et utile pour le client:\n{rawResponse}\n\nRéponse reformulée :"
+                    ? $"Tu es un assistant bancaire expert de la STB. Reformule cette réponse technique en {language} pour qu'elle soit claire et utile pour le client:\n{rawResponse}"
                     : $"Tu es un assistant bancaire expert de la STB. Réponds en {language} de manière professionnelle et précise à la question du client sur les services bancaires.";
 
                 var request = new
                 {
-                    model = "mistralai/Mistral-7B-Instruct-v0.1",
+                    model = OpenAiModel,
                     messages = new[]
                     {
                         new
@@ -298,30 +299,30 @@ namespace Chatbot.Services
 
                 using var httpClient = new HttpClient();
                 httpClient.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", _togetherApiKey);
+                    new AuthenticationHeaderValue("Bearer", _openAiApiKey);
                 httpClient.Timeout = TimeSpan.FromSeconds(30);
 
                 var response = await httpClient.PostAsync(
-                    "https://api.together.xyz/v1/chat/completions",
+                    "https://api.openai.com/v1/chat/completions",
                     content);
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError($"Erreur Together.ai ({(int)response.StatusCode}): {errorContent}");
+                    _logger.LogError($"Erreur OpenAI ({(int)response.StatusCode}): {errorContent}");
                     return rawResponse ?? GetFallbackMessage(language);
                 }
 
                 var jsonResponse = await response.Content.ReadAsStringAsync();
-                var togetherResponse = JsonSerializer.Deserialize<TogetherAIResponse>(jsonResponse, _jsonOptions);
+                var openAiResponse = JsonSerializer.Deserialize<OpenAIResponse>(jsonResponse, _jsonOptions);
 
-                return togetherResponse?.Choices?.FirstOrDefault()?.Message?.Content?.Trim()
+                return openAiResponse?.Choices?.FirstOrDefault()?.Message?.Content?.Trim()
                     ?? rawResponse
                     ?? GetFallbackMessage(language);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur Together.ai");
+                _logger.LogError(ex, "Erreur OpenAI");
                 return rawResponse ?? GetFallbackMessage(language);
             }
         }
@@ -366,16 +367,16 @@ namespace Chatbot.Services
             _httpClient?.Dispose();
         }
 
-        private class TogetherAIResponse
+        private class OpenAIResponse
         {
-            public List<TogetherAIChoice> Choices { get; set; }
+            public List<OpenAIChoice> Choices { get; set; }
 
-            public class TogetherAIChoice
+            public class OpenAIChoice
             {
-                public TogetherAIMessage Message { get; set; }
+                public OpenAIMessage Message { get; set; }
             }
 
-            public class TogetherAIMessage
+            public class OpenAIMessage
             {
                 public string Content { get; set; }
             }

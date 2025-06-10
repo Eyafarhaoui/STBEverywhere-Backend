@@ -26,7 +26,7 @@ namespace  STBEverywhere_Back_SharedModels
 
         public DateTime DateVirement { get; set; }  // Date et heure précise du virement
 
-        public string Statut { get; set; }
+        public string StatutVirement { get; set; }
 
         public string? Description { get; set; }
 
